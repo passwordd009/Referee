@@ -13,6 +13,6 @@ export async function initFaceLandmarker(): Promise<void> {
 
 export async function detectFaceLandmarks(videoEl: HTMLVideoElement) {
   return faceapi
-    .detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.5 }))
+    .detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 }))
     .withFaceLandmarks(true);
 }

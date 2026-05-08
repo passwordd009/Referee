@@ -1,11 +1,19 @@
 export type GameMode = 'Duel' | 'WaterHold';
 export type GameStatus = 'idle' | 'modeSelect' | 'countdown' | 'playing' | 'ended';
 
+export interface FaceBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface FaceState {
   faceDetected: boolean;
   smileScore: number;
   mouthOpen: boolean;
   timestamp: number;
+  box?: FaceBox;
 }
 
 export interface GameState {

@@ -1,5 +1,5 @@
 import type { WithFaceLandmarks, WithFaceDetection, FaceLandmarks68 } from 'face-api.js';
-import type { FaceState } from '../types';
+import type { FaceState, FaceBox } from '../types';
 
 // face-api.js 68-point landmark indices
 const LM = {
@@ -45,7 +45,10 @@ export function detectionToFaceState(det: Detection, timestamp: number): FaceSta
     `[smile] score=${smileScore.toFixed(3)} corner=${cornerScore.toFixed(3)} width=${widthScore.toFixed(3)} rise=${avgRise.toFixed(1)}px ratio=${widthRatio.toFixed(3)} faceW=${faceWidth.toFixed(0)}px`
   );
 
-  return { faceDetected: true, smileScore, mouthOpen, timestamp };
+  const { x, y, width, height } = det.detection.box;
+  const box: FaceBox = { x, y, width, height };
+
+  return { faceDetected: true, smileScore, mouthOpen, timestamp, box };
 }
 
 export const noFaceState = (timestamp: number): FaceState => ({
