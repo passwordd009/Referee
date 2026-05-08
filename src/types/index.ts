@@ -14,6 +14,7 @@ export interface FaceState {
   mouthOpen: boolean;
   timestamp: number;
   box?: FaceBox;
+  landmarks?: { x: number; y: number }[];
 }
 
 export interface GameState {

@@ -47,8 +47,9 @@ export function detectionToFaceState(det: Detection, timestamp: number): FaceSta
 
   const { x, y, width, height } = det.detection.box;
   const box: FaceBox = { x, y, width, height };
+  const landmarks = det.landmarks.positions.map((p) => ({ x: p.x, y: p.y }));
 
-  return { faceDetected: true, smileScore, mouthOpen, timestamp, box };
+  return { faceDetected: true, smileScore, mouthOpen, timestamp, box, landmarks };
 }
 
 export const noFaceState = (timestamp: number): FaceState => ({
