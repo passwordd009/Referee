@@ -6,16 +6,16 @@ interface CameraFeedProps {
   faceState: FaceState | null;
 }
 
-// face-api.js 68-point landmark groups
+// MediaPipe FaceMesh 468-point landmark groups
 const LANDMARK_GROUPS = {
-  jaw:        [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
-  leftBrow:   [17,18,19,20,21],
-  rightBrow:  [22,23,24,25,26],
-  nose:       [27,28,29,30,31,32,33,34,35],
-  leftEye:    [36,37,38,39,40,41],
-  rightEye:   [42,43,44,45,46,47],
-  mouthOuter: [48,49,50,51,52,53,54,55,56,57,58,59],
-  mouthInner: [60,61,62,63,64,65,66,67],
+  oval:       [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109],
+  leftBrow:   [276,283,282,295,285,300,293,334,296,336],
+  rightBrow:  [46,53,52,65,55,70,63,105,66,107],
+  nose:       [168,6,197,195,5,4,1,19,94,2],
+  leftEye:    [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246],
+  rightEye:   [362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398],
+  lipsOuter:  [61,146,91,181,84,17,314,405,321,375,291,409,270,269,267,0,37,39,40,185],
+  lipsInner:  [78,95,88,178,87,14,317,402,318,324,308,415,310,311,312,13,82,81,80,191],
 };
 
 function smileColor(score: number): string {
@@ -92,14 +92,14 @@ export function CameraFeed({ videoRef, faceState }: CameraFeedProps) {
     ctx.fillText(`smile ${Math.round(smileScore * 100)}%`, mx + 4, box.y - 6);
 
     // Landmark groups
-    drawGroup(ctx, landmarks, LANDMARK_GROUPS.jaw,        'rgba(255,255,255,0.5)', 1.5, w);
+    drawGroup(ctx, landmarks, LANDMARK_GROUPS.oval,       'rgba(255,255,255,0.4)', 1.2, w);
     drawGroup(ctx, landmarks, LANDMARK_GROUPS.nose,       'rgba(255,255,255,0.5)', 1.5, w);
     drawGroup(ctx, landmarks, LANDMARK_GROUPS.leftBrow,   'rgba(255,255,255,0.5)', 1.5, w);
     drawGroup(ctx, landmarks, LANDMARK_GROUPS.rightBrow,  'rgba(255,255,255,0.5)', 1.5, w);
     drawGroup(ctx, landmarks, LANDMARK_GROUPS.leftEye,    'rgba(100,200,255,0.8)', 1.5, w, true);
     drawGroup(ctx, landmarks, LANDMARK_GROUPS.rightEye,   'rgba(100,200,255,0.8)', 1.5, w, true);
-    drawGroup(ctx, landmarks, LANDMARK_GROUPS.mouthOuter, color, 2, w, true);
-    drawGroup(ctx, landmarks, LANDMARK_GROUPS.mouthInner, color, 1.5, w, true);
+    drawGroup(ctx, landmarks, LANDMARK_GROUPS.lipsOuter,  color, 2, w, true);
+    drawGroup(ctx, landmarks, LANDMARK_GROUPS.lipsInner,  color, 1.5, w, true);
   }, [faceState]);
 
   const score = faceState?.smileScore ?? 0;

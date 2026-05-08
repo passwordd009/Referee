@@ -1,13 +1,10 @@
 import { useReducer, useRef, useEffect, useState, useCallback } from 'react';
 import type { FaceState, RefereeEvent, GameAction, GameState } from '../types';
 import { reduceGameState, initialGameState } from './gameEngine';
-import { initFaceLandmarker } from '../vision/faceLandmarker';
 import { startWebcam, stopWebcam } from '../vision/webcam';
-import { startVisionLoop } from '../vision/visionLoop';
+import { startWebSocketVision } from '../vision/websocketVision';
 import { WATER_HOLD_SMILE_THRESHOLD } from './modes/waterHoldMode';
 import { createRefereeEvent } from '../referee/refereeEngine';
-
-// face-api.js uses TF.js internally — no special headers needed
 
 export interface GameEngineResult {
   gameState: GameState;
@@ -44,16 +41,7 @@ export function useGameEngine(): GameEngineResult {
       const videoEl = videoRef.current;
       if (!videoEl) return;
 
-      try {
-        await initFaceLandmarker();
-      } catch {
-        if (!cancelled) setWebcamError('Failed to load vision model. Check your connection.');
-        return;
-      }
-
-      if (cancelled) return;
-
-      const result = await startWebcam(videoEl);
+        const result = await startWebcam(videoEl);
       if (cancelled) return;
 
       if ('error' in result) {
@@ -69,16 +57,17 @@ export function useGameEngine(): GameEngineResult {
       }
 
       streamRef.current = result.stream;
-      setIsVisionReady(true);
 
       const threshold =
         gameStateRef.current.mode === 'WaterHold'
           ? WATER_HOLD_SMILE_THRESHOLD
           : undefined;
 
-      stopLoop = startVisionLoop({
-        videoEl,
+      stopLoop = startWebSocketVision({
         smileThreshold: threshold,
+        onReady: () => {
+          if (!cancelled) setIsVisionReady(true);
+        },
         onEvent: (event) => {
           setFaceState(event.faceState);
 
