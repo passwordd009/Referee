@@ -9,13 +9,13 @@ export async function initFaceLandmarker(): Promise<FaceLandmarker> {
   return FaceLandmarker.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath: MODEL_PATH,
-      delegate: 'GPU',
+      delegate: 'CPU',
     },
     runningMode: 'VIDEO',
     numFaces: 1,
-    minFaceDetectionConfidence: 0.5,
-    minFacePresenceConfidence: 0.5,
-    minTrackingConfidence: 0.5,
+    minFaceDetectionConfidence: 0.3,
+    minFacePresenceConfidence: 0.3,
+    minTrackingConfidence: 0.3,
   });
 }
 

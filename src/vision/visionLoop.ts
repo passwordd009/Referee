@@ -25,7 +25,11 @@ export function startVisionLoop(opts: VisionLoopOptions): () => void {
 
       try {
         // skip frames until video is actually producing pixels
-        if (opts.videoEl.readyState < 2 || opts.videoEl.videoWidth === 0) {
+        if (
+          opts.videoEl.readyState < 3 ||
+          opts.videoEl.videoWidth === 0 ||
+          opts.videoEl.currentTime === 0
+        ) {
           requestAnimationFrame(tick);
           return;
         }
@@ -44,8 +48,8 @@ export function startVisionLoop(opts: VisionLoopOptions): () => void {
             opts.onEvent({ type: 'VIOLATION_DETECTED', faceState });
           }
         }
-      } catch {
-        // skip frame on detection error
+      } catch (err) {
+        console.warn('[visionLoop] detection error:', err);
       }
     }
 
