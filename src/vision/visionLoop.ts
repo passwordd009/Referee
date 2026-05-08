@@ -24,17 +24,13 @@ export function startVisionLoop(opts: VisionLoopOptions): () => void {
       lastTimestamp = nowMs;
 
       try {
-        // skip frames until video is actually producing pixels
-        if (
-          opts.videoEl.readyState < 3 ||
-          opts.videoEl.videoWidth === 0 ||
-          opts.videoEl.currentTime === 0
-        ) {
+        // skip frames until video has real pixel dimensions
+        if (opts.videoEl.videoWidth === 0 || opts.videoEl.videoHeight === 0) {
           requestAnimationFrame(tick);
           return;
         }
 
-        const result = detectFaceLandmarks(opts.landmarker, opts.videoEl, nowMs);
+        const result = detectFaceLandmarks(opts.landmarker, opts.videoEl);
 
         if (!result.faceLandmarks || result.faceLandmarks.length === 0) {
           opts.onEvent({

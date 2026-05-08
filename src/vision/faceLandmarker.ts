@@ -11,7 +11,7 @@ export async function initFaceLandmarker(): Promise<FaceLandmarker> {
       modelAssetPath: MODEL_PATH,
       delegate: 'CPU',
     },
-    runningMode: 'VIDEO',
+    runningMode: 'IMAGE',
     numFaces: 1,
     minFaceDetectionConfidence: 0.3,
     minFacePresenceConfidence: 0.3,
@@ -19,10 +19,29 @@ export async function initFaceLandmarker(): Promise<FaceLandmarker> {
   });
 }
 
+// Reusable offscreen canvas — avoids allocating one per frame
+let _canvas: HTMLCanvasElement | null = null;
+let _ctx: CanvasRenderingContext2D | null = null;
+
+function getCanvas(w: number, h: number): CanvasRenderingContext2D {
+  if (!_canvas) {
+    _canvas = document.createElement('canvas');
+    _ctx = _canvas.getContext('2d', { willReadFrequently: true })!;
+  }
+  if (_canvas.width !== w || _canvas.height !== h) {
+    _canvas.width = w;
+    _canvas.height = h;
+  }
+  return _ctx!;
+}
+
 export function detectFaceLandmarks(
   landmarker: FaceLandmarker,
   videoEl: HTMLVideoElement,
-  timestampMs: number
 ) {
-  return landmarker.detectForVideo(videoEl, timestampMs);
+  const w = videoEl.videoWidth;
+  const h = videoEl.videoHeight;
+  const ctx = getCanvas(w, h);
+  ctx.drawImage(videoEl, 0, 0, w, h);
+  return landmarker.detect(_canvas!);
 }
