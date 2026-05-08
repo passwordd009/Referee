@@ -13,7 +13,9 @@ export async function startWebcam(
     });
     videoEl.srcObject = stream;
     await new Promise<void>((resolve, reject) => {
-      videoEl.onloadeddata = () => resolve();
+      videoEl.onloadedmetadata = () => {
+        videoEl.play().then(resolve).catch(reject);
+      };
       videoEl.onerror = () => reject(new Error('Video element error'));
     });
     return { stream };

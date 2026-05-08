@@ -24,6 +24,12 @@ export function startVisionLoop(opts: VisionLoopOptions): () => void {
       lastTimestamp = nowMs;
 
       try {
+        // skip frames until video is actually producing pixels
+        if (opts.videoEl.readyState < 2 || opts.videoEl.videoWidth === 0) {
+          requestAnimationFrame(tick);
+          return;
+        }
+
         const result = detectFaceLandmarks(opts.landmarker, opts.videoEl, nowMs);
 
         if (!result.faceLandmarks || result.faceLandmarks.length === 0) {
