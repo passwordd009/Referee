@@ -43,5 +43,20 @@ export function detectFaceLandmarks(
   const h = videoEl.videoHeight;
   const ctx = getCanvas(w, h);
   ctx.drawImage(videoEl, 0, 0, w, h);
-  return landmarker.detect(_canvas!);
+
+  // Debug: verify the canvas actually has pixel content
+  const sample = ctx.getImageData(0, 0, 4, 4).data;
+  const hasContent = sample.some((v) => v > 0);
+  if (!hasContent) {
+    console.warn('[faceLandmarker] canvas is blank — video not producing frames yet');
+  }
+
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const result = landmarker.detect(imageData);
+  if (result.faceLandmarks.length === 0) {
+    console.log('[faceLandmarker] no face found. dims:', w, 'x', h, 'hasContent:', hasContent);
+  } else {
+    console.log('[faceLandmarker] face detected! landmarks:', result.faceLandmarks.length);
+  }
+  return result;
 }
