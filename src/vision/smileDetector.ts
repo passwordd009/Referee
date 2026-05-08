@@ -41,6 +41,10 @@ export function detectionToFaceState(det: Detection, timestamp: number): FaceSta
   const vertGap = Math.abs(pts[LM.LIP_BOTTOM].y - pts[LM.LIP_TOP].y);
   const mouthOpen = vertGap > faceWidth * 0.05;
 
+  console.log(
+    `[smile] score=${smileScore.toFixed(3)} corner=${cornerScore.toFixed(3)} width=${widthScore.toFixed(3)} rise=${avgRise.toFixed(1)}px ratio=${widthRatio.toFixed(3)} faceW=${faceWidth.toFixed(0)}px`
+  );
+
   return { faceDetected: true, smileScore, mouthOpen, timestamp };
 }
 
