@@ -13,9 +13,9 @@ export async function initFaceLandmarker(): Promise<FaceLandmarker> {
     },
     runningMode: 'IMAGE',
     numFaces: 1,
-    minFaceDetectionConfidence: 0.3,
-    minFacePresenceConfidence: 0.3,
-    minTrackingConfidence: 0.3,
+    minFaceDetectionConfidence: 0.05,
+    minFacePresenceConfidence: 0.05,
+    minTrackingConfidence: 0.05,
   });
 }
 
@@ -44,19 +44,19 @@ export function detectFaceLandmarks(
   const ctx = getCanvas(w, h);
   ctx.drawImage(videoEl, 0, 0, w, h);
 
-  // Debug: verify the canvas actually has pixel content
   const sample = ctx.getImageData(0, 0, 4, 4).data;
   const hasContent = sample.some((v) => v > 0);
-  if (!hasContent) {
-    console.warn('[faceLandmarker] canvas is blank — video not producing frames yet');
+
+  // Try video element directly first, fall back to canvas
+  let result = landmarker.detect(videoEl);
+  if (result.faceLandmarks.length === 0) {
+    result = landmarker.detect(_canvas!);
   }
 
-  const imageData = ctx.getImageData(0, 0, w, h);
-  const result = landmarker.detect(imageData);
   if (result.faceLandmarks.length === 0) {
-    console.log('[faceLandmarker] no face found. dims:', w, 'x', h, 'hasContent:', hasContent);
+    console.log('[faceLandmarker] no face. dims:', w, 'x', h, 'hasContent:', hasContent);
   } else {
-    console.log('[faceLandmarker] face detected! landmarks:', result.faceLandmarks.length);
+    console.log('[faceLandmarker] FACE DETECTED');
   }
   return result;
 }
