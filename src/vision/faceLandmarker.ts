@@ -1,62 +1,18 @@
-import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+import * as faceapi from 'face-api.js';
 
-const WASM_PATH = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
-const MODEL_PATH =
-  'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+let _loaded = false;
 
-export async function initFaceLandmarker(): Promise<FaceLandmarker> {
-  const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
-  return FaceLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath: MODEL_PATH,
-      delegate: 'CPU',
-    },
-    runningMode: 'IMAGE',
-    numFaces: 1,
-    minFaceDetectionConfidence: 0.05,
-    minFacePresenceConfidence: 0.05,
-    minTrackingConfidence: 0.05,
-  });
+export async function initFaceLandmarker(): Promise<void> {
+  if (_loaded) return;
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri('/weights'),
+    faceapi.nets.faceLandmark68TinyNet.loadFromUri('/weights'),
+  ]);
+  _loaded = true;
 }
 
-// Reusable offscreen canvas — avoids allocating one per frame
-let _canvas: HTMLCanvasElement | null = null;
-let _ctx: CanvasRenderingContext2D | null = null;
-
-function getCanvas(w: number, h: number): CanvasRenderingContext2D {
-  if (!_canvas) {
-    _canvas = document.createElement('canvas');
-    _ctx = _canvas.getContext('2d', { willReadFrequently: true })!;
-  }
-  if (_canvas.width !== w || _canvas.height !== h) {
-    _canvas.width = w;
-    _canvas.height = h;
-  }
-  return _ctx!;
-}
-
-export function detectFaceLandmarks(
-  landmarker: FaceLandmarker,
-  videoEl: HTMLVideoElement,
-) {
-  const w = videoEl.videoWidth;
-  const h = videoEl.videoHeight;
-  const ctx = getCanvas(w, h);
-  ctx.drawImage(videoEl, 0, 0, w, h);
-
-  const sample = ctx.getImageData(0, 0, 4, 4).data;
-  const hasContent = sample.some((v) => v > 0);
-
-  // Try video element directly first, fall back to canvas
-  let result = landmarker.detect(videoEl);
-  if (result.faceLandmarks.length === 0) {
-    result = landmarker.detect(_canvas!);
-  }
-
-  if (result.faceLandmarks.length === 0) {
-    console.log('[faceLandmarker] no face. dims:', w, 'x', h, 'hasContent:', hasContent);
-  } else {
-    console.log('[faceLandmarker] FACE DETECTED');
-  }
-  return result;
+export async function detectFaceLandmarks(videoEl: HTMLVideoElement) {
+  return faceapi
+    .detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.2 }))
+    .withFaceLandmarks(true);
 }

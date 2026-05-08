@@ -7,6 +7,8 @@ import { startVisionLoop } from '../vision/visionLoop';
 import { WATER_HOLD_SMILE_THRESHOLD } from './modes/waterHoldMode';
 import { createRefereeEvent } from '../referee/refereeEngine';
 
+// face-api.js uses TF.js internally — no special headers needed
+
 export interface GameEngineResult {
   gameState: GameState;
   faceState: FaceState | null;
@@ -42,18 +44,14 @@ export function useGameEngine(): GameEngineResult {
       const videoEl = videoRef.current;
       if (!videoEl) return;
 
-      let landmarker;
       try {
-        landmarker = await initFaceLandmarker();
+        await initFaceLandmarker();
       } catch {
         if (!cancelled) setWebcamError('Failed to load vision model. Check your connection.');
         return;
       }
 
-      if (cancelled) {
-        landmarker.close();
-        return;
-      }
+      if (cancelled) return;
 
       const result = await startWebcam(videoEl);
       if (cancelled) return;
@@ -80,7 +78,6 @@ export function useGameEngine(): GameEngineResult {
 
       stopLoop = startVisionLoop({
         videoEl,
-        landmarker,
         smileThreshold: threshold,
         onEvent: (event) => {
           setFaceState(event.faceState);

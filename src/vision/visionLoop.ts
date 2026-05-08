@@ -1,59 +1,46 @@
-import type { FaceLandmarker } from '@mediapipe/tasks-vision';
 import type { VisionEvent } from '../types';
 import { detectFaceLandmarks } from './faceLandmarker';
-import { landmarksToFaceState, noFaceState, SMILE_THRESHOLDS } from './smileDetector';
+import { detectionToFaceState, noFaceState, SMILE_THRESHOLDS } from './smileDetector';
 
 export interface VisionLoopOptions {
   videoEl: HTMLVideoElement;
-  landmarker: FaceLandmarker;
   onEvent: (event: VisionEvent) => void;
   smileThreshold?: number;
 }
 
-const FRAME_INTERVAL_MS = 33; // ~30fps cap
-
 export function startVisionLoop(opts: VisionLoopOptions): () => void {
   let running = true;
-  let lastTimestamp = 0;
   const threshold = opts.smileThreshold ?? SMILE_THRESHOLDS.violation;
 
-  function tick(nowMs: number) {
-    if (!running) return;
+  async function loop() {
+    while (running) {
+      // Pace to display refresh rate
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (!running) break;
 
-    if (nowMs - lastTimestamp >= FRAME_INTERVAL_MS) {
-      lastTimestamp = nowMs;
+      const { videoEl } = opts;
+      if (videoEl.videoWidth === 0 || videoEl.videoHeight === 0) continue;
 
       try {
-        // skip frames until video has real pixel dimensions
-        if (opts.videoEl.videoWidth === 0 || opts.videoEl.videoHeight === 0) {
-          requestAnimationFrame(tick);
-          return;
-        }
+        const det = await detectFaceLandmarks(videoEl);
+        if (!running) break;
 
-        const result = detectFaceLandmarks(opts.landmarker, opts.videoEl);
-
-        if (!result.faceLandmarks || result.faceLandmarks.length === 0) {
-          opts.onEvent({
-            type: 'FACE_NOT_DETECTED',
-            faceState: noFaceState(nowMs),
-          });
+        const now = Date.now();
+        if (!det) {
+          opts.onEvent({ type: 'FACE_NOT_DETECTED', faceState: noFaceState(now) });
         } else {
-          const faceState = landmarksToFaceState(result.faceLandmarks[0], nowMs);
+          const faceState = detectionToFaceState(det, now);
           opts.onEvent({ type: 'SMILE_SCORE_UPDATE', faceState });
           if (faceState.smileScore >= threshold) {
             opts.onEvent({ type: 'VIOLATION_DETECTED', faceState });
           }
         }
       } catch (err) {
-        console.warn('[visionLoop] detection error:', err);
+        console.warn('[visionLoop] error:', err);
       }
     }
-
-    requestAnimationFrame(tick);
   }
 
-  requestAnimationFrame(tick);
-  return () => {
-    running = false;
-  };
+  loop();
+  return () => { running = false; };
 }
