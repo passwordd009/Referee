@@ -1,91 +1,49 @@
-import { useEffect } from 'react';
-import { useGameEngine } from './engine/useGameEngine';
-import { CameraFeed } from './components/CameraFeed';
-import { ModeSelect } from './components/ModeSelect';
-import { GameView } from './components/GameView';
-import { GameOver } from './components/GameOver';
-import { createRoundStartEvent } from './referee/refereeEngine';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { LoginPage } from './pages/LoginPage';
+import { SignupPage } from './pages/SignupPage';
+import { GamePage } from './pages/GamePage';
+import { ProtectedRoute } from './auth/ProtectedRoute';
+import { supabaseConfigured } from './lib/supabase';
+
+function MissingConfig() {
+  return (
+    <div className="auth-page">
+      <div className="auth-card">
+        <h1 className="auth-title">Setup needed</h1>
+        <p className="auth-subtitle" style={{ opacity: 1, color: '#f87171' }}>
+          Missing Supabase environment variables.
+        </p>
+        <p style={{ fontSize: 13, opacity: 0.6, lineHeight: 1.7, textAlign: 'center' }}>
+          Create <code style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: 4 }}>web/.env</code> with:
+          <br /><br />
+          <code style={{ display: 'block', background: 'rgba(255,255,255,0.07)', padding: '12px', borderRadius: 6, textAlign: 'left', whiteSpace: 'pre' }}>
+{`VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...`}
+          </code>
+          <br />
+          Then restart the dev server.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export function App() {
-  const {
-    gameState,
-    faceState,
-    refereeEvents,
-    videoRef,
-    isVisionReady,
-    webcamError,
-    dispatch,
-  } = useGameEngine();
-
-  const { status, mode } = gameState;
-
-  // emit round-start referee event when playing begins
-  useEffect(() => {
-    if (status === 'playing' && mode) {
-      const event = createRoundStartEvent(gameState);
-      // inject as a synthetic entry — we store it via a separate local state merge
-      // In this architecture we just dispatch a no-op to trigger re-render;
-      // the round-start message is handled inside RefereeDisplay watching for status change
-      void event; // used by RefereeDisplay directly via status prop
-    }
-  }, [status]);
-
-  function handleModeSelect(selectedMode: Parameters<typeof dispatch>[0] & { type: 'MODE_SELECTED' }) {
-    dispatch(selectedMode);
-    dispatch({ type: 'START_GAME' });
-  }
-
-  function handlePlayAgain() {
-    dispatch({ type: 'START_GAME' });
-  }
-
-  function handleChangeMode() {
-    dispatch({ type: 'RESET' });
-  }
+  if (!supabaseConfigured) return <MissingConfig />;
 
   return (
-    <div className="app">
-      {webcamError ? (
-        <div className="error-screen">
-          <div className="error-container">
-            <div className="error-icon">⚠️</div>
-            <h2 className="error-title">Camera Error</h2>
-            <p className="error-message">{webcamError}</p>
-            <button className="btn btn-primary" onClick={() => window.location.reload()}>
-              Retry
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Camera feed always mounted — keeps stream alive across state transitions */}
-          <CameraFeed videoRef={videoRef} faceState={faceState} />
-
-          {(status === 'idle' || status === 'modeSelect') && (
-            <ModeSelect
-              onSelect={(m) => handleModeSelect({ type: 'MODE_SELECTED', mode: m })}
-              isVisionReady={isVisionReady}
-            />
-          )}
-
-          {(status === 'countdown' || status === 'playing') && (
-            <GameView
-              gameState={gameState}
-              faceState={faceState}
-              refereeEvents={refereeEvents}
-            />
-          )}
-
-          {status === 'ended' && (
-            <GameOver
-              gameState={gameState}
-              refereeEvents={refereeEvents}
-              onPlayAgain={handlePlayAgain}
-              onChangeMode={handleChangeMode}
-            />
-          )}
-        </>
-      )}
-    </div>
+    <Routes>
+      <Route path="/login"  element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <GamePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

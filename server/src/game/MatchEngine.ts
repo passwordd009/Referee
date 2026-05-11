@@ -1,6 +1,7 @@
 import type { Server } from 'socket.io';
 import { roomManager } from './RoomManager.js';
 import { LaughProcessor } from './LaughProcessor.js';
+import { saveMatch } from '../lib/matchPersistence.js';
 
 const TURN_MS      = 15_000;
 const BETWEEN_MS   = 1_500;
@@ -146,6 +147,8 @@ export class MatchEngine {
           ({ userId, laughsCaused, laughsReceived, isEliminated })),
       },
     });
+
+    saveMatch(room, winnerId).catch(err => console.error('[persist]', err));
   }
 }
 
