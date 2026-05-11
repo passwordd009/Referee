@@ -5,7 +5,6 @@ import type { MatchEngine } from '../game/MatchEngine.js';
 export function registerMatchHandlers(io: Server, socket: Socket, engine: MatchEngine): void {
   engine.init(io);
 
-  // Host starts the match — requires all players ready
   socket.on('start_match', (payload: { roomCode: string; userId: string }, cb: (res: object) => void) => {
     const room = roomManager.get(payload.roomCode);
     if (!room) return cb({ ok: false, error: 'Room not found' });
@@ -19,29 +18,36 @@ export function registerMatchHandlers(io: Server, socket: Socket, engine: MatchE
     cb({ ok: true });
   });
 
-  // Active player plays a bit — broadcast to room
-  socket.on('play_bit', (payload: { roomCode: string; userId: string; bitId: string; mediaUrl: string; mediaType: string }) => {
-    const room = roomManager.get(payload.roomCode);
-    if (!room || room.status !== 'in_game') return;
-    const activeId = room.turnOrder[room.currentTurnIndex];
-    if (activeId !== payload.userId) return;
-
-    io.to(payload.roomCode).emit('bit_played', {
-      playerId:  payload.userId,
-      bitId:     payload.bitId,
-      mediaUrl:  payload.mediaUrl,
-      mediaType: payload.mediaType,
-      startedAt: Date.now(),
+  // Active player plays a bit from their inventory
+  socket.on('play_bit', (payload: {
+    roomCode: string;
+    userId: string;
+    mediaType: string;
+    mediaUrl?: string;
+    textContent?: string;
+    title?: string;
+  }) => {
+    engine.playBit(payload.roomCode, payload.userId, {
+      mediaType:   payload.mediaType,
+      mediaUrl:    payload.mediaUrl,
+      textContent: payload.textContent,
+      title:       payload.title,
     });
+  });
+
+  // Player guesses who played the bit
+  socket.on('submit_guess', (payload: {
+    roomCode: string;
+    guesserId: string;
+    targetId: string;
+  }) => {
+    engine.submitGuess(payload.roomCode, payload.guesserId, payload.targetId);
   });
 
   // Active player skips their turn
   socket.on('skip_turn', (payload: { roomCode: string; userId: string }) => {
     const room = roomManager.get(payload.roomCode);
     if (!room || room.status !== 'in_game') return;
-    const activeId = room.turnOrder[room.currentTurnIndex];
-    if (activeId !== payload.userId) return;
-
     engine.endTurn(payload.roomCode);
   });
 }

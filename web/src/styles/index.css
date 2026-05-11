@@ -414,6 +414,447 @@ html, body, #root {
   border: 1px solid rgba(255,255,255,0.25);
 }
 
+/* ─── Home Page ──────────────────────────────────────── */
+
+.home-page {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px 20px;
+}
+
+.home-title {
+  font-size: clamp(40px, 10vw, 72px);
+  font-weight: 900;
+  letter-spacing: 12px;
+  text-transform: uppercase;
+}
+
+.home-subtitle {
+  font-size: 14px;
+  letter-spacing: 3px;
+  opacity: 0.5;
+  text-transform: uppercase;
+}
+
+.home-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 16px;
+}
+
+.home-actions__create {
+  width: 100%;
+  padding: 16px;
+  font-size: 15px;
+}
+
+.home-actions__divider {
+  font-size: 12px;
+  letter-spacing: 3px;
+  opacity: 0.4;
+  text-transform: uppercase;
+}
+
+.home-actions__join {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.home-actions__code-input {
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  font-size: 16px;
+  text-align: center;
+}
+
+/* ─── Lobby Page ─────────────────────────────────────── */
+
+.lobby-page {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lobby-header__left,
+.lobby-header__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lobby-header__code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 6px 14px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  transition: border-color 0.15s;
+}
+
+.lobby-header__code:hover { border-color: rgba(255,255,255,0.4); }
+
+.lobby-header__code-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  opacity: 0.5;
+  text-transform: uppercase;
+}
+
+.lobby-header__code-value {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 4px;
+}
+
+.lobby-header__code-copy {
+  font-size: 11px;
+  opacity: 0.45;
+  letter-spacing: 1px;
+}
+
+.lobby-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  padding: 24px;
+  overflow: hidden;
+}
+
+@media (max-width: 700px) {
+  .lobby-body {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+}
+
+.lobby-section-title {
+  font-size: 13px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lobby-section-count {
+  font-size: 11px;
+  opacity: 0.5;
+}
+
+.lobby-players {
+  display: flex;
+  flex-direction: column;
+}
+
+.player-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  flex: 1;
+}
+
+.player-avatar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 80px;
+}
+
+.player-avatar--self .player-avatar__pic {
+  border-color: #fff;
+}
+
+.player-avatar__pic {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: 2px solid rgba(255,255,255,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  position: relative;
+  overflow: hidden;
+}
+
+.player-avatar__pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.player-avatar__pic--empty {
+  border-style: dashed;
+  opacity: 0.3;
+  font-size: 22px;
+}
+
+.player-avatar__host-badge {
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 7px;
+  letter-spacing: 1px;
+  background: #fff;
+  color: #000;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 700;
+}
+
+.player-avatar__ready-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  background: #4ade80;
+  border-radius: 50%;
+  border: 2px solid #000;
+}
+
+.player-avatar__name {
+  font-size: 11px;
+  letter-spacing: 1px;
+  opacity: 0.7;
+  text-align: center;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-avatar__lives {
+  display: flex;
+  gap: 3px;
+}
+
+.life-pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f87171;
+  display: block;
+}
+
+.lobby-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.lobby-hint {
+  font-size: 12px;
+  letter-spacing: 1px;
+  opacity: 0.4;
+  margin-top: 12px;
+}
+
+/* ─── Bits Inventory ─────────────────────────────────── */
+
+.bits-inventory {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.bits-inventory__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.bits-inventory__title {
+  font-size: 13px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.bits-inventory__add {
+  font-size: 12px;
+  padding: 8px 16px;
+}
+
+.bits-inventory__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  opacity: 0.5;
+  font-size: 14px;
+  text-align: center;
+}
+
+.bit-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.bit-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  transition: background 0.15s;
+}
+
+.bit-card:hover { background: rgba(255,255,255,0.08); }
+
+.bit-card__icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.bit-card__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bit-card__title {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bit-card__type {
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  opacity: 0.4;
+}
+
+.bit-card__delete {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.35);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.bit-card__delete:hover { color: #f87171; background: rgba(248,113,113,0.1); }
+
+/* ─── Modal ──────────────────────────────────────────── */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  background: #111;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 12px;
+  padding: 32px;
+  width: 100%;
+  max-width: 440px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.bit-type-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.bit-type-tab {
+  flex: 1;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  color: rgba(255,255,255,0.6);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 8px 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.bit-type-tab--active {
+  background: rgba(255,255,255,0.15);
+  border-color: rgba(255,255,255,0.5);
+  color: #fff;
+}
+
+.bit-textarea {
+  resize: vertical;
+  min-height: 100px;
+  line-height: 1.6;
+}
+
 /* ─── Game Header ────────────────────────────────────── */
 
 .game-header {
