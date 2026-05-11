@@ -1,23 +1,13 @@
 {
-  "name": "referee",
+  "name": "laugh-table",
   "private": true,
-  "version": "0.1.0",
-  "type": "module",
+  "workspaces": ["web", "server"],
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "face-api.js": "^0.22.2",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "dev:web": "npm run dev --workspace=web",
+    "dev:server": "npm run dev --workspace=server",
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:server\""
   },
   "devDependencies": {
-    "@types/react": "^18.3.5",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "typescript": "^5.5.3",
-    "vite": "^5.4.0"
+    "concurrently": "^9.0.0"
   }
 }
