@@ -1,7 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { LoginPage } from './pages/LoginPage';
-import { SignupPage } from './pages/SignupPage';
-import { GamePage } from './pages/GamePage';
+import { LoginPage }   from './pages/LoginPage';
+import { SignupPage }  from './pages/SignupPage';
+import { HomePage }   from './pages/HomePage';
+import { LobbyPage }  from './pages/LobbyPage';
+import { GamePage }   from './pages/GamePage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { supabaseConfigured } from './lib/supabase';
 
@@ -28,22 +30,21 @@ VITE_SUPABASE_ANON_KEY=...`}
   );
 }
 
+function Protected({ children }: { children: React.ReactNode }) {
+  return <ProtectedRoute>{children}</ProtectedRoute>;
+}
+
 export function App() {
   if (!supabaseConfigured) return <MissingConfig />;
 
   return (
     <Routes>
-      <Route path="/login"  element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <GamePage />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/login"        element={<LoginPage />} />
+      <Route path="/signup"       element={<SignupPage />} />
+      <Route path="/"             element={<Protected><HomePage /></Protected>} />
+      <Route path="/lobby/:code"  element={<Protected><LobbyPage /></Protected>} />
+      <Route path="/game/:code"   element={<Protected><GamePage /></Protected>} />
+      <Route path="*"             element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
