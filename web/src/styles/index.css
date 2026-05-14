@@ -570,6 +570,7 @@ html, body, #root {
 .lobby-players {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 .player-grid {
@@ -679,6 +680,151 @@ html, body, #root {
   letter-spacing: 1px;
   opacity: 0.4;
   margin-top: 12px;
+}
+
+/* ─── Lobby Settings ─────────────────────────────────── */
+
+.lobby-left {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  overflow-y: auto;
+}
+
+.lobby-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lobby-settings__sublabel {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  opacity: 0.45;
+}
+
+.lobby-mode-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lobby-mode-card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.55);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 10px 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lobby-mode-card:hover:not(:disabled) {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.3);
+  color: #fff;
+}
+
+.lobby-mode-card--active {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.5);
+  color: #fff;
+}
+
+.lobby-mode-card:disabled {
+  cursor: default;
+}
+
+.lobby-mode-card:disabled.lobby-mode-card--active {
+  border-color: rgba(255,255,255,0.35);
+}
+
+.lobby-mode-card__label {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.lobby-mode-card__desc {
+  font-size: 11px;
+  opacity: 0.65;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.lobby-setting-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lobby-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+}
+
+.lobby-setting-row__label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.lobby-setting-row__control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lobby-stepper-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #fff;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  line-height: 1;
+}
+
+.lobby-stepper-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.18);
+}
+
+.lobby-stepper-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.lobby-stepper-value {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  min-width: 32px;
+  text-align: center;
 }
 
 /* ─── Bits Inventory ─────────────────────────────────── */

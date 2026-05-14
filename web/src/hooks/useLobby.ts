@@ -11,12 +11,16 @@ export interface LobbyPlayer {
   isEliminated: boolean;
 }
 
+export type GameMode = 'water_hold' | 'guess_the_biter' | 'casual';
+
 export interface LobbyRoom {
   id: string;
   roomCode: string;
   roomType: string;
   maxPlayers: number;
   livesCount: number;
+  gameMode: GameMode;
+  turnTimeSecs: number;
   status: 'lobby' | 'in_game' | 'finished';
   createdBy: string;
   players: LobbyPlayer[];
@@ -82,11 +86,22 @@ export function useLobby(
     socket.emit('player_ready', { roomCode, userId: user.id, ready });
   }, [roomCode, user.id]);
 
+  const updateSettings = useCallback((
+    settings: { gameMode?: GameMode; livesCount?: number; turnTimeSecs?: number },
+    cb?: (err?: string) => void,
+  ) => {
+    socket.emit('update_room_settings', { roomCode, userId: user.id, ...settings },
+      (res: { ok: boolean; error?: string }) => {
+        if (!res.ok) cb?.(res.error);
+      },
+    );
+  }, [roomCode, user.id]);
+
   const startMatch = useCallback((cb: (err?: string) => void) => {
     socket.emit('start_match', { roomCode, userId: user.id }, (res: { ok: boolean; error?: string }) => {
       if (!res.ok) cb(res.error);
     });
   }, [roomCode, user.id]);
 
-  return { ...state, setReady, startMatch };
+  return { ...state, setReady, updateSettings, startMatch };
 }

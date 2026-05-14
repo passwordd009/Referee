@@ -1,6 +1,6 @@
 import type { Server, Socket } from 'socket.io';
 import { roomManager } from '../game/RoomManager.js';
-import type { RoomType } from '../game/RoomManager.js';
+import type { RoomType, GameMode } from '../game/RoomManager.js';
 
 export function registerRoomHandlers(io: Server, socket: Socket): void {
 
@@ -11,12 +11,16 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
     roomType?: RoomType;
     maxPlayers?: number;
     livesCount?: number;
+    gameMode?: GameMode;
+    turnTimeSecs?: number;
   }, cb: (res: object) => void) => {
     const room = roomManager.create({
-      roomType:   payload.roomType   ?? 'private',
-      maxPlayers: payload.maxPlayers ?? 6,
-      livesCount: Math.min(Math.max(payload.livesCount ?? 3, 1), 4),
-      createdBy:  payload.userId,
+      roomType:     payload.roomType     ?? 'private',
+      maxPlayers:   payload.maxPlayers   ?? 6,
+      livesCount:   Math.min(Math.max(payload.livesCount   ?? 3,  1),  4),
+      gameMode:     payload.gameMode     ?? 'casual',
+      turnTimeSecs: Math.min(Math.max(payload.turnTimeSecs ?? 20, 10), 30),
+      createdBy:    payload.userId,
     });
 
     roomManager.addPlayer(room.roomCode, {
@@ -65,6 +69,26 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
     cb({ ok: true, room: roomManager.serialize(room) });
   });
 
+  socket.on('update_room_settings', (payload: {
+    roomCode: string;
+    userId: string;
+    gameMode?: GameMode;
+    livesCount?: number;
+    turnTimeSecs?: number;
+  }, cb: (res: object) => void) => {
+    const room = roomManager.get(payload.roomCode);
+    if (!room) return cb({ ok: false, error: 'Room not found' });
+    if (room.createdBy !== payload.userId) return cb({ ok: false, error: 'Only the host can change settings' });
+    if (room.status !== 'lobby') return cb({ ok: false, error: 'Game already started' });
+
+    if (payload.gameMode)     room.gameMode     = payload.gameMode;
+    if (payload.livesCount)   room.livesCount   = Math.min(Math.max(payload.livesCount,   1),  4);
+    if (payload.turnTimeSecs) room.turnTimeSecs = Math.min(Math.max(payload.turnTimeSecs, 10), 30);
+
+    io.to(payload.roomCode).emit('room_updated', { room: roomManager.serialize(room) });
+    cb({ ok: true });
+  });
+
   socket.on('player_ready', (payload: { roomCode: string; userId: string; ready: boolean }) => {
     const room = roomManager.get(payload.roomCode);
     if (!room) return;
@@ -80,11 +104,16 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
     if (!room) return;
     room.players.delete(payload.userId);
     room.turnOrder = room.turnOrder.filter(id => id !== payload.userId);
+    roomManager.removeSocketMapping(socket.id);
     socket.leave(payload.roomCode);
-    io.to(payload.roomCode).emit('player_left', {
-      userId: payload.userId,
-      room: roomManager.serialize(room),
-    });
+    if (room.players.size === 0) {
+      roomManager.delete(payload.roomCode);
+    } else {
+      io.to(payload.roomCode).emit('player_left', {
+        userId: payload.userId,
+        room: roomManager.serialize(room),
+      });
+    }
   });
 
   socket.on('disconnect', () => {
