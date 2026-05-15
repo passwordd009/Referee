@@ -1,14 +1,25 @@
+/// <reference types="vite/client" />
 import { useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { useGameEngine } from '../engine/useGameEngine';
 import { CameraFeed } from '../components/CameraFeed';
 import { ModeSelect } from '../components/ModeSelect';
 import { GameView } from '../components/GameView';
 import { GameOver } from '../components/GameOver';
+import { RemoteVideoGrid } from '../components/game/RemoteVideoGrid';
 import { createRoundStartEvent } from '../referee/refereeEngine';
 import { useAuth } from '../auth/AuthContext';
+import { useLiveKit } from '../hooks/useLiveKit';
+
+const SERVER_URL  = (import.meta.env.VITE_SERVER_URL  as string | undefined) ?? 'http://localhost:3001';
+const LIVEKIT_URL = (import.meta.env.VITE_LIVEKIT_URL as string | undefined) ?? '';
 
 export function GamePage() {
-  const { signOut, user } = useAuth();
+  const { code: roomCode = '' } = useParams<{ code: string }>();
+  const { signOut, user }       = useAuth();
+
+  const username = (user?.user_metadata?.username as string | undefined) ?? user?.email ?? 'Player';
+
   const {
     gameState,
     faceState,
@@ -18,6 +29,14 @@ export function GamePage() {
     webcamError,
     dispatch,
   } = useGameEngine();
+
+  const { remoteParticipants, connected } = useLiveKit({
+    roomCode:   roomCode.toUpperCase(),
+    userId:     user?.id ?? '',
+    username,
+    serverUrl:  SERVER_URL,
+    livekitUrl: LIVEKIT_URL,
+  });
 
   const { status, mode } = gameState;
 
@@ -35,13 +54,16 @@ export function GamePage() {
 
   return (
     <div className="app">
-      {/* Header bar */}
       <header className="game-header">
-        <span className="game-header__user">{user?.user_metadata?.username ?? user?.email}</span>
+        <span className="game-header__user">{username}</span>
         <button className="btn btn-ghost game-header__signout" onClick={signOut}>
           Sign out
         </button>
       </header>
+
+      {connected && remoteParticipants.length > 0 && (
+        <RemoteVideoGrid participants={remoteParticipants} />
+      )}
 
       {webcamError ? (
         <div className="error-screen">

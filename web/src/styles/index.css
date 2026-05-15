@@ -1032,3 +1032,51 @@ html, body, #root {
   opacity: 0.7;
   line-height: 1.6;
 }
+
+/* ─── Remote Video Grid (LiveKit) ────────────────────── */
+
+.remote-video-grid {
+  position: absolute;
+  top: 44px; /* below game-header */
+  left: 0;
+  right: 0;
+  z-index: 15; /* above camera (auto), below header (20) */
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  overflow-x: auto;
+  pointer-events: none;
+}
+
+.remote-video-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.remote-video-tile__video {
+  width: 120px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transform: scaleX(-1);
+  display: block;
+}
+
+.remote-video-tile__label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  opacity: 0.7;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
