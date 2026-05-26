@@ -14,6 +14,7 @@ export interface Player {
   laughsReceived: number;
   isEliminated: boolean;
   isReady: boolean;
+  isBot?: boolean;
 }
 
 export interface Room {
@@ -67,8 +68,20 @@ class RoomManager {
   }
 
   delete(roomCode: string): void {
+    const room = this.rooms.get(roomCode);
+    if (room) {
+      for (const player of room.players.values()) {
+        this.socketToRoom.delete(player.socketId);
+      }
+    }
     this.rooms.delete(roomCode);
     this.pendingDeletes.delete(roomCode);
+  }
+
+  hasHumanPlayers(roomCode: string): boolean {
+    const room = this.rooms.get(roomCode);
+    if (!room) return false;
+    return Array.from(room.players.values()).some(p => !p.isBot);
   }
 
   removeSocketMapping(socketId: string): void {
@@ -116,7 +129,8 @@ class RoomManager {
     room.turnOrder = room.turnOrder.filter(id => id !== userId);
     this.socketToRoom.delete(socketId);
 
-    if (room.players.size === 0) this.rooms.delete(roomCode);
+    const hasHumans = Array.from(room.players.values()).some(p => !p.isBot);
+    if (!hasHumans) this.rooms.delete(roomCode);
 
     return { roomCode, userId, room };
   }

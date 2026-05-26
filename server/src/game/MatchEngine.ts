@@ -3,15 +3,30 @@ import { roomManager } from './RoomManager.js';
 import { LaughProcessor } from './LaughProcessor.js';
 import { saveMatch } from '../lib/matchPersistence.js';
 
-const TURN_MS    = 20_000;
-const REVEAL_MS  = 5_000;
+const REVEAL_MS  = 4_000;
 const BETWEEN_MS = 2_000;
+
+const BOT_BITS = [
+  "I asked my dog what two minus two is. He said nothing.",
+  "Why do cows wear bells? Because their horns don't work.",
+  "I told my doctor I broke my arm in two places. He told me to stop going to those places.",
+  "I used to hate facial hair, but then it grew on me.",
+  "I'm on a seafood diet. I see food and I eat it.",
+  "Why don't scientists trust atoms? Because they make up everything.",
+  "I would tell you a construction joke but I'm still working on it.",
+  "The librarian asked if I needed help finding anything. I said, 'Just my will to live.'",
+  "My wife told me to stop acting like a flamingo. I had to put my foot down.",
+  "I told my boss I needed a raise because three companies were after me. He asked which ones. I said, 'The gas, electric, and water company.'",
+  "I'm writing a book on reverse psychology. Please don't buy it.",
+  "A skeleton walks into a bar and says, 'I'll have a beer and a mop.'",
+];
 
 export class MatchEngine {
   private io!: Server;
-  private turnTimers   = new Map<string, ReturnType<typeof setTimeout>>();
-  private laughProcs   = new Map<string, LaughProcessor>();
-  private activeTurns  = new Map<string, string>(); // roomCode → active userId
+  private turnTimers  = new Map<string, ReturnType<typeof setTimeout>>();
+  private botTimers   = new Map<string, ReturnType<typeof setTimeout>>();
+  private laughProcs  = new Map<string, LaughProcessor>();
+  private activeTurns = new Map<string, string>();
 
   init(io: Server) { this.io = io; }
 
@@ -42,7 +57,6 @@ export class MatchEngine {
     const room = roomManager.get(roomCode);
     if (!room || room.status !== 'in_game') return;
 
-    // Advance past eliminated players
     const total = room.turnOrder.length;
     let attempts = 0;
     while (
@@ -54,22 +68,57 @@ export class MatchEngine {
 
     const activeId = room.turnOrder[room.currentTurnIndex];
     this.activeTurns.set(roomCode, activeId);
+    const activePlayer = room.players.get(activeId);
+    const turnMs = (room.turnTimeSecs ?? 20) * 1000;
 
-    // Tell everyone a turn started — identity hidden
-    this.io.to(roomCode).emit('anonymous_turn_started', { durationMs: TURN_MS });
+    this.io.to(roomCode).emit('anonymous_turn_started', { durationMs: turnMs });
 
-    // Tell only the active player it's their turn (private)
-    const activeSocket = this.getSocketId(roomCode, activeId);
-    if (activeSocket) {
-      this.io.to(activeSocket).emit('your_turn', { durationMs: TURN_MS });
+    if (activePlayer?.isBot) {
+      // Bot auto-plays a random bit after 1.5–3s
+      const delay = 1500 + Math.random() * 1500;
+      const botPlay = setTimeout(() => {
+        const bit = BOT_BITS[Math.floor(Math.random() * BOT_BITS.length)];
+        this.playBit(roomCode, activeId, { mediaType: 'text', textContent: bit });
+      }, delay);
+      this.botTimers.set(roomCode, botPlay);
+    } else {
+      // Tell only the active human player it's their turn
+      const activeSocket = this.getSocketId(roomCode, activeId);
+      if (activeSocket) {
+        this.io.to(activeSocket).emit('your_turn', { durationMs: turnMs });
+      }
+
+      // Bot might laugh during the human's turn (40% chance)
+      this.scheduleBotLaugh(roomCode, turnMs);
     }
 
-    const timer = setTimeout(() => this.endTurn(roomCode), TURN_MS);
+    const timer = setTimeout(() => this.endTurn(roomCode), turnMs);
     this.turnTimers.set(roomCode, timer);
   }
 
-  // Active player plays a bit — broadcast content but not identity
-  playBit(roomCode: string, userId: string, bit: { mediaType: string; mediaUrl?: string; textContent?: string; title?: string }): void {
+  private scheduleBotLaugh(roomCode: string, turnMs: number): void {
+    const room = roomManager.get(roomCode);
+    if (!room) return;
+    const bot = Array.from(room.players.values()).find(p => p.isBot && !p.isEliminated);
+    if (!bot) return;
+    if (Math.random() > 0.4) return;
+
+    const minDelay = 3_000;
+    const maxDelay = Math.max(minDelay + 1_000, turnMs - 3_000);
+    const delay = minDelay + Math.random() * (maxDelay - minDelay);
+
+    const timer = setTimeout(() => {
+      this.processLaugh(roomCode, bot.userId, 0.75 + Math.random() * 0.25);
+    }, delay);
+    this.botTimers.set(roomCode, timer);
+  }
+
+  playBit(roomCode: string, userId: string, bit: {
+    mediaType: string;
+    mediaUrl?: string;
+    textContent?: string;
+    title?: string;
+  }): void {
     const activeId = this.activeTurns.get(roomCode);
     if (activeId !== userId) return;
 
@@ -81,72 +130,46 @@ export class MatchEngine {
     });
   }
 
-  // A player guesses who played the bit
   submitGuess(roomCode: string, guesserId: string, targetId: string): void {
     const room = roomManager.get(roomCode);
     if (!room || room.status !== 'in_game') return;
 
     const activeId = this.activeTurns.get(roomCode);
-    if (!activeId || guesserId === activeId) return; // can't guess your own turn
+    if (!activeId || guesserId === activeId) return;
 
     const correct = targetId === activeId;
     const guesser = room.players.get(guesserId);
     const target  = room.players.get(activeId);
 
     if (correct && target) {
-      // Caught! Active player loses a life
       target.livesRemaining -= 1;
-
-      this.io.to(roomCode).emit('guess_result', {
-        guesserId,
-        targetId,
-        correct: true,
-        revealedId: activeId,
-      });
-
-      this.io.to(roomCode).emit('life_removed', {
-        playerId: activeId,
-        livesRemaining: target.livesRemaining,
-        reason: 'caught',
-      });
+      this.io.to(roomCode).emit('guess_result', { guesserId, targetId, correct: true, revealedId: activeId });
+      this.io.to(roomCode).emit('life_removed', { playerId: activeId, livesRemaining: target.livesRemaining, reason: 'caught' });
 
       if (target.livesRemaining <= 0) {
         target.isEliminated = true;
         this.io.to(roomCode).emit('player_eliminated', { playerId: activeId });
       }
-
-      // End turn immediately after being caught
       this.endTurn(roomCode);
     } else if (guesser) {
-      // Wrong guess — guesser loses a life
       guesser.livesRemaining -= 1;
-
-      this.io.to(roomCode).emit('guess_result', {
-        guesserId,
-        targetId,
-        correct: false,
-      });
-
-      this.io.to(roomCode).emit('life_removed', {
-        playerId: guesserId,
-        livesRemaining: guesser.livesRemaining,
-        reason: 'wrong_guess',
-      });
+      this.io.to(roomCode).emit('guess_result', { guesserId, targetId, correct: false });
+      this.io.to(roomCode).emit('life_removed', { playerId: guesserId, livesRemaining: guesser.livesRemaining, reason: 'wrong_guess' });
 
       if (guesser.livesRemaining <= 0) {
         guesser.isEliminated = true;
         this.io.to(roomCode).emit('player_eliminated', { playerId: guesserId });
       }
 
-      if (this.activePlayers(roomCode).length <= 1) {
-        this.endMatch(roomCode);
-      }
+      if (this.activePlayers(roomCode).length <= 1) this.endMatch(roomCode);
     }
   }
 
   endTurn(roomCode: string): void {
     clearTimeout(this.turnTimers.get(roomCode));
     this.turnTimers.delete(roomCode);
+    clearTimeout(this.botTimers.get(roomCode));
+    this.botTimers.delete(roomCode);
 
     const room = roomManager.get(roomCode);
     if (!room || room.status !== 'in_game') return;
@@ -154,12 +177,8 @@ export class MatchEngine {
     const endingId = this.activeTurns.get(roomCode);
     if (!endingId) return;
 
-    // Reveal who played the bit
     const player = room.players.get(endingId);
-    this.io.to(roomCode).emit('turn_revealed', {
-      playerId: endingId,
-      username: player?.username,
-    });
+    this.io.to(roomCode).emit('turn_revealed', { playerId: endingId, username: player?.username });
 
     room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.length;
     this.activeTurns.delete(roomCode);
@@ -171,15 +190,12 @@ export class MatchEngine {
     }
   }
 
-  // Active player is invincible — laughing only costs non-active players
   processLaugh(roomCode: string, laughingPlayerId: string, confidence: number): void {
     const room = roomManager.get(roomCode);
     if (!room || room.status !== 'in_game') return;
 
     const activeId = this.activeTurns.get(roomCode);
-
-    // Active player is invincible during their turn
-    if (laughingPlayerId === activeId) return;
+    if (laughingPlayerId === activeId) return; // active player is invincible
 
     const proc = this.laughProcs.get(roomCode);
     if (!proc?.shouldRegister(laughingPlayerId, confidence)) return;
@@ -187,8 +203,8 @@ export class MatchEngine {
     const player = room.players.get(laughingPlayerId);
     if (!player || player.isEliminated) return;
 
-    player.livesRemaining  -= 1;
-    player.laughsReceived  += 1;
+    player.livesRemaining -= 1;
+    player.laughsReceived += 1;
 
     if (activeId) {
       const attacker = room.players.get(activeId);
@@ -196,28 +212,24 @@ export class MatchEngine {
     }
 
     this.io.to(roomCode).emit('laugh_detected', { playerId: laughingPlayerId, confidence });
-    this.io.to(roomCode).emit('life_removed', {
-      playerId: laughingPlayerId,
-      livesRemaining: player.livesRemaining,
-      reason: 'laughed',
-    });
+    this.io.to(roomCode).emit('life_removed', { playerId: laughingPlayerId, livesRemaining: player.livesRemaining, reason: 'laughed' });
 
     if (player.livesRemaining <= 0) {
       player.isEliminated = true;
       this.io.to(roomCode).emit('player_eliminated', { playerId: laughingPlayerId });
-
-      if (this.activePlayers(roomCode).length <= 1) {
-        this.endMatch(roomCode);
-      }
+      if (this.activePlayers(roomCode).length <= 1) this.endMatch(roomCode);
     }
   }
 
   private endMatch(roomCode: string): void {
+    clearTimeout(this.turnTimers.get(roomCode));
+    this.turnTimers.delete(roomCode);
+    clearTimeout(this.botTimers.get(roomCode));
+    this.botTimers.delete(roomCode);
+
     const room = roomManager.get(roomCode);
     if (!room) return;
 
-    clearTimeout(this.turnTimers.get(roomCode));
-    this.turnTimers.delete(roomCode);
     this.activeTurns.delete(roomCode);
     room.status = 'finished';
 
@@ -225,8 +237,8 @@ export class MatchEngine {
     const active   = this.activePlayers(roomCode);
     const winnerId = active[0] ?? null;
 
-    const sorted = (key: keyof typeof players[0]) =>
-      [...players].sort((a, b) => (b[key] as number) - (a[key] as number));
+    const sorted = (key: 'laughsCaused' | 'laughsReceived') =>
+      [...players].sort((a, b) => b[key] - a[key]);
 
     this.io.to(roomCode).emit('match_finished', {
       winnerId,
@@ -244,8 +256,7 @@ export class MatchEngine {
   }
 
   private getSocketId(roomCode: string, userId: string): string | undefined {
-    const room = roomManager.get(roomCode);
-    return room?.players.get(userId)?.socketId;
+    return roomManager.get(roomCode)?.players.get(userId)?.socketId;
   }
 }
 

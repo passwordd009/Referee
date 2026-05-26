@@ -5,6 +5,12 @@ import type { MatchEngine } from '../game/MatchEngine.js';
 export function registerMatchHandlers(io: Server, socket: Socket, engine: MatchEngine): void {
   engine.init(io);
 
+  socket.on('get_match_state', (payload: { roomCode: string }, cb: (res: object) => void) => {
+    const room = roomManager.get(payload.roomCode);
+    if (!room) return cb({ ok: false, error: 'Room not found' });
+    cb({ ok: true, room: roomManager.serialize(room) });
+  });
+
   socket.on('start_match', (payload: { roomCode: string; userId: string }, cb: (res: object) => void) => {
     const room = roomManager.get(payload.roomCode);
     if (!room) return cb({ ok: false, error: 'Room not found' });
