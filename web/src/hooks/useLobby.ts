@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useCallback } from 'react';
+import { useEffect, useReducer, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { socket } from '../lib/socket';
 
@@ -9,7 +9,10 @@ export interface LobbyPlayer {
   isReady: boolean;
   livesRemaining: number;
   isEliminated: boolean;
+  isBot?: boolean;
 }
+
+export type GameMode = 'water_hold' | 'guess_the_biter' | 'casual';
 
 export interface LobbyRoom {
   id: string;
@@ -17,6 +20,8 @@ export interface LobbyRoom {
   roomType: string;
   maxPlayers: number;
   livesCount: number;
+  gameMode: GameMode;
+  turnTimeSecs: number;
   status: 'lobby' | 'in_game' | 'finished';
   createdBy: string;
   players: LobbyPlayer[];
@@ -49,8 +54,10 @@ export function useLobby(
 ) {
   const navigate = useNavigate();
   const [state, dispatch] = useReducer(reducer, { room: null, error: '', connecting: true });
+  const matchStarted = useRef(false);
 
   useEffect(() => {
+    matchStarted.current = false;
     socket.connect();
 
     socket.emit('join_room', {
@@ -63,23 +70,40 @@ export function useLobby(
       dispatch({ type: 'ROOM_UPDATE', room: res.room! });
     });
 
-    socket.on('room_updated',   ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
-    socket.on('player_joined',  ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
-    socket.on('player_left',    ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
-    socket.on('match_started',  () => navigate(`/game/${roomCode}`));
+    socket.on('room_updated',  ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
+    socket.on('player_joined', ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
+    socket.on('player_left',   ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
+    socket.on('match_started', () => {
+      matchStarted.current = true;
+      navigate(`/game/${roomCode}`);
+    });
 
     return () => {
-      socket.emit('leave_room', { roomCode, userId: user.id });
+      // Don't leave/disconnect if the match just started — the game page takes over the socket
+      if (!matchStarted.current) {
+        socket.emit('leave_room', { roomCode, userId: user.id });
+        socket.disconnect();
+      }
       socket.off('room_updated');
       socket.off('player_joined');
       socket.off('player_left');
       socket.off('match_started');
-      socket.disconnect();
     };
   }, [roomCode]);
 
   const setReady = useCallback((ready: boolean) => {
     socket.emit('player_ready', { roomCode, userId: user.id, ready });
+  }, [roomCode, user.id]);
+
+  const updateSettings = useCallback((
+    settings: { gameMode?: GameMode; livesCount?: number; turnTimeSecs?: number },
+    cb?: (err?: string) => void,
+  ) => {
+    socket.emit('update_room_settings', { roomCode, userId: user.id, ...settings },
+      (res: { ok: boolean; error?: string }) => {
+        if (!res.ok) cb?.(res.error);
+      },
+    );
   }, [roomCode, user.id]);
 
   const startMatch = useCallback((cb: (err?: string) => void) => {
@@ -88,5 +112,5 @@ export function useLobby(
     });
   }, [roomCode, user.id]);
 
-  return { ...state, setReady, startMatch };
+  return { ...state, setReady, updateSettings, startMatch };
 }

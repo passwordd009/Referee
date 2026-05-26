@@ -7,9 +7,9 @@ export function HomePage() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
-  const [joinCode,  setJoinCode]  = useState('');
-  const [error,     setError]     = useState('');
-  const [loading,   setLoading]   = useState<'create' | 'join' | null>(null);
+  const [joinCode, setJoinCode] = useState('');
+  const [error,    setError]    = useState('');
+  const [loading,  setLoading]  = useState<'create' | 'join' | null>(null);
 
   const username = (user?.user_metadata?.username as string | undefined) ?? user?.email ?? 'Player';
   const userId   = user!.id;
@@ -18,12 +18,16 @@ export function HomePage() {
     setError('');
     setLoading('create');
     socket.connect();
-    socket.emit('create_room', { userId, username }, (res: { ok: boolean; room?: { roomCode: string }; error?: string }) => {
-      socket.disconnect();
-      setLoading(null);
-      if (!res.ok) { setError(res.error ?? 'Failed to create room'); return; }
-      navigate(`/lobby/${res.room!.roomCode}`);
-    });
+    socket.timeout(8000).emit(
+      'create_room',
+      { userId, username },
+      (err: Error | null, res: { ok: boolean; room?: { roomCode: string }; error?: string }) => {
+        setLoading(null);
+        if (err) { setError('Connection timed out. Check your connection and try again.'); return; }
+        if (!res.ok) { setError(res.error ?? 'Failed to create room'); return; }
+        navigate(`/lobby/${res.room!.roomCode}`);
+      },
+    );
   }
 
   function joinRoom() {
