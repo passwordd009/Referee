@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useCallback } from 'react';
+import { useEffect, useReducer, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { socket } from '../lib/socket';
 
@@ -9,6 +9,7 @@ export interface LobbyPlayer {
   isReady: boolean;
   livesRemaining: number;
   isEliminated: boolean;
+  isBot?: boolean;
 }
 
 export type GameMode = 'water_hold' | 'guess_the_biter' | 'casual';
@@ -53,8 +54,10 @@ export function useLobby(
 ) {
   const navigate = useNavigate();
   const [state, dispatch] = useReducer(reducer, { room: null, error: '', connecting: true });
+  const matchStarted = useRef(false);
 
   useEffect(() => {
+    matchStarted.current = false;
     socket.connect();
 
     socket.emit('join_room', {
@@ -67,18 +70,24 @@ export function useLobby(
       dispatch({ type: 'ROOM_UPDATE', room: res.room! });
     });
 
-    socket.on('room_updated',   ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
-    socket.on('player_joined',  ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
-    socket.on('player_left',    ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
-    socket.on('match_started',  () => navigate(`/game/${roomCode}`));
+    socket.on('room_updated',  ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
+    socket.on('player_joined', ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
+    socket.on('player_left',   ({ room }: { room: LobbyRoom }) => dispatch({ type: 'ROOM_UPDATE', room }));
+    socket.on('match_started', () => {
+      matchStarted.current = true;
+      navigate(`/game/${roomCode}`);
+    });
 
     return () => {
-      socket.emit('leave_room', { roomCode, userId: user.id });
+      // Don't leave/disconnect if the match just started — the game page takes over the socket
+      if (!matchStarted.current) {
+        socket.emit('leave_room', { roomCode, userId: user.id });
+        socket.disconnect();
+      }
       socket.off('room_updated');
       socket.off('player_joined');
       socket.off('player_left');
       socket.off('match_started');
-      socket.disconnect();
     };
   }, [roomCode]);
 
