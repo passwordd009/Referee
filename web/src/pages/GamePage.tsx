@@ -43,22 +43,17 @@ function RemoteVideo({ track }: { track: RemoteTrack | null }) {
   return <video ref={videoRef} autoPlay playsInline muted className="gp-tile__video" />;
 }
 
-// Self-view: renders the local camera videoRef into the tile
-function LocalVideo({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement | null> }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+// Self-view: attaches the local camera stream to a <video> element
+function LocalVideo({ stream }: { stream: MediaStream | null }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    const container = containerRef.current;
-    const video     = videoRef.current;
-    if (!container || !video) return;
-    container.appendChild(video);
-    return () => {
-      // Return video to body so it keeps running when this unmounts
-      if (container.contains(video)) container.removeChild(video);
-    };
-  }, [videoRef]);
+    const el = videoRef.current;
+    if (!el) return;
+    el.srcObject = stream;
+  }, [stream]);
 
-  return <div ref={containerRef} className="gp-tile__video-container" />;
+  return <video ref={videoRef} autoPlay playsInline muted className="gp-tile__video" />;
 }
 
 export function GamePage() {
@@ -79,20 +74,11 @@ export function GamePage() {
     livekitUrl: LIVEKIT_URL,
   });
 
-  const { videoRef: localVideoRef } = useLocalCamera({
+  const { stream: localStream } = useLocalCamera({
     onLaugh: (confidence) => {
       socket.emit('laugh_detected', { roomCode, userId, confidence });
     },
   });
-
-  // Hidden video element that stays alive for the vision loop
-  useEffect(() => {
-    const el = localVideoRef.current;
-    if (!el) return;
-    el.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;';
-    document.body.appendChild(el);
-    return () => { if (document.body.contains(el)) document.body.removeChild(el); };
-  }, []);
 
   const maxLives = Math.max(...players.map(p => p.livesRemaining), 3);
   const timerPct = turnDurationMs > 0 ? timeLeft / (turnDurationMs / 1000) : 0;
@@ -157,16 +143,8 @@ export function GamePage() {
               {/* Video area */}
               <div className="gp-tile__screen">
                 {isSelf ? (
-                  // Local camera — shown mirrored, laugh detection runs on it
-                  <video
-                    ref={localVideoRef as React.RefObject<HTMLVideoElement>}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="gp-tile__video"
-                  />
+                  <LocalVideo stream={localStream} />
                 ) : (
-                  // Remote LiveKit feed
                   <RemoteVideo track={remotePt?.videoTrack ?? null} />
                 )}
               </div>
