@@ -10,31 +10,38 @@ interface UseLocalCameraOptions {
 }
 
 export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
-  const videoRef   = useRef<HTMLVideoElement>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [error, setError]   = useState<string | null>(null);
   const onLaughRef = useRef(onLaugh);
   onLaughRef.current = onLaugh;
 
   useEffect(() => {
-    let stream: MediaStream | null = null;
+    let activeStream: MediaStream | null = null;
     let stopLoop: (() => void) | null = null;
     let cancelled = false;
 
-    async function init() {
-      const videoEl = videoRef.current;
-      if (!videoEl) return;
+    // Create a hidden video element imperatively so it exists immediately
+    const videoEl = document.createElement('video');
+    videoEl.setAttribute('autoplay', '');
+    videoEl.setAttribute('playsinline', '');
+    videoEl.setAttribute('muted', '');
+    videoEl.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-9999px;';
+    document.body.appendChild(videoEl);
 
+    async function init() {
       const result = await startWebcam(videoEl);
       if (cancelled) return;
 
       if ('error' in result) {
         setError(
           result.error.kind === 'permission-denied' ? 'Camera permission denied' :
-          result.error.kind === 'not-found' ? 'No camera found' : 'Camera error'
+          result.error.kind === 'not-found'         ? 'No camera found' : 'Camera error'
         );
         return;
       }
-      stream = result.stream;
+
+      activeStream = result.stream;
+      setStream(result.stream);
 
       await initFaceLandmarker();
       if (cancelled) return;
@@ -55,9 +62,11 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
     return () => {
       cancelled = true;
       stopLoop?.();
-      if (stream) stopWebcam(stream);
+      if (activeStream) stopWebcam(activeStream);
+      if (document.body.contains(videoEl)) document.body.removeChild(videoEl);
+      setStream(null);
     };
   }, []);
 
-  return { videoRef, error };
+  return { stream, error };
 }
