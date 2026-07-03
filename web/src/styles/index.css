@@ -1202,6 +1202,56 @@ html, body, #root {
   border-color: rgba(255,255,255,0.25);
 }
 
+/* Live AI laugh-detection status on your own tile */
+.gp-ai {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 5px;
+}
+
+.gp-ai__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  flex-shrink: 0;
+  animation: pulse 2s ease infinite;
+}
+
+.gp-ai__label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.gp-ai__label--warn { color: #fbbf24; }
+.gp-ai__label--err  { color: #f87171; }
+
+.gp-ai__meter {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.gp-ai__meter-fill {
+  height: 100%;
+  background: #4ade80;
+  border-radius: 2px;
+  transition: width 0.15s ease;
+}
+
+.gp-ai__meter-fill--hot { background: #f87171; }
+
 /* Applied to the penalized player's tile while the whistle banner shows */
 .gp-tile--laugh .gp-tile__screen {
   border-color: #f87171;

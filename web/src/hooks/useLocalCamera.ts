@@ -2,8 +2,32 @@ import { useEffect, useRef, useState } from 'react';
 import { startWebcam, stopWebcam } from '../vision/webcam';
 import { startVisionLoop } from '../vision/visionLoop';
 import { initFaceLandmarker } from '../vision/faceLandmarker';
+import { SMILE_THRESHOLDS } from '../vision/smileDetector';
 
-const LAUGH_THRESHOLD = 0.5;
+/**
+ * Local AI laugh detection.
+ *
+ * Opens the webcam into a hidden, imperatively-created <video> element
+ * (so it exists before any React render), runs the face-api.js vision
+ * loop on it, and calls `onLaugh` when the player laughs.
+ *
+ * A laugh is only reported after LAUGH_STREAK consecutive frames above
+ * the smile threshold — a single glitchy frame never costs a life — and
+ * at most once per EMIT_COOLDOWN_MS, so a long laugh doesn't spam the
+ * server (which applies its own cooldown too).
+ */
+
+const LAUGH_STREAK = 3;
+const EMIT_COOLDOWN_MS = 2_000;
+
+/** Live detection status, for showing the player that the AI is working. */
+export interface LiveFaceState {
+  faceDetected: boolean;
+  /** 0 (straight face) → 1 (big laugh). */
+  smileScore: number;
+}
+
+export type CameraStatus = 'starting' | 'active' | 'error';
 
 interface UseLocalCameraOptions {
   onLaugh?: (confidence: number) => void;
@@ -11,7 +35,10 @@ interface UseLocalCameraOptions {
 
 export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [error, setError]   = useState<string | null>(null);
+  const [status, setStatus] = useState<CameraStatus>('starting');
+  const [error, setError] = useState<string | null>(null);
+  const [faceState, setFaceState] = useState<LiveFaceState | null>(null);
+
   const onLaughRef = useRef(onLaugh);
   onLaughRef.current = onLaugh;
 
@@ -20,11 +47,20 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
     let stopLoop: (() => void) | null = null;
     let cancelled = false;
 
-    // Create a hidden video element imperatively so it exists immediately
+    // Laugh confirmation state (see module comment).
+    let streak = 0;
+    let lastEmitAt = 0;
+
+    // Latest frame result, synced to React state on a slow interval so
+    // the game UI doesn't re-render 30 times a second.
+    let latest: LiveFaceState | null = null;
+    const syncTimer = setInterval(() => {
+      if (!cancelled && latest) setFaceState({ ...latest });
+    }, 200);
+
+    // Hidden video element the vision loop reads frames from. The visible
+    // self-view is a separate element fed the same MediaStream.
     const videoEl = document.createElement('video');
-    videoEl.setAttribute('autoplay', '');
-    videoEl.setAttribute('playsinline', '');
-    videoEl.setAttribute('muted', '');
     videoEl.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-9999px;';
     document.body.appendChild(videoEl);
 
@@ -33,9 +69,12 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
       if (cancelled) return;
 
       if ('error' in result) {
+        setStatus('error');
         setError(
           result.error.kind === 'permission-denied' ? 'Camera permission denied' :
-          result.error.kind === 'not-found'         ? 'No camera found' : 'Camera error'
+          result.error.kind === 'not-found'         ? 'No camera found' :
+          result.error.kind === 'in-use'            ? 'Camera is in use by another app' :
+          'Camera error'
         );
         return;
       }
@@ -43,17 +82,42 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
       activeStream = result.stream;
       setStream(result.stream);
 
-      await initFaceLandmarker();
+      try {
+        await initFaceLandmarker();
+      } catch (err) {
+        if (!cancelled) {
+          setStatus('error');
+          setError('Could not load the AI models');
+          console.error('[useLocalCamera] model load failed:', err);
+        }
+        return;
+      }
       if (cancelled) return;
 
+      setStatus('active');
       stopLoop = startVisionLoop({
         videoEl,
+        smileThreshold: SMILE_THRESHOLDS.violation,
         onEvent: (event) => {
+          if (event.type === 'FACE_NOT_DETECTED') {
+            latest = { faceDetected: false, smileScore: 0 };
+            streak = 0;
+            return;
+          }
+
+          latest = { faceDetected: true, smileScore: event.faceState.smileScore };
+
           if (event.type === 'VIOLATION_DETECTED') {
-            onLaughRef.current?.(event.faceState.smileScore);
+            streak += 1;
+            const now = Date.now();
+            if (streak >= LAUGH_STREAK && now - lastEmitAt >= EMIT_COOLDOWN_MS) {
+              lastEmitAt = now;
+              onLaughRef.current?.(event.faceState.smileScore);
+            }
+          } else if (event.faceState.smileScore < SMILE_THRESHOLDS.violation) {
+            streak = 0;
           }
         },
-        smileThreshold: LAUGH_THRESHOLD,
       });
     }
 
@@ -61,6 +125,7 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
 
     return () => {
       cancelled = true;
+      clearInterval(syncTimer);
       stopLoop?.();
       if (activeStream) stopWebcam(activeStream);
       if (document.body.contains(videoEl)) document.body.removeChild(videoEl);
@@ -68,5 +133,5 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
     };
   }, []);
 
-  return { stream, error };
+  return { stream, status, error, faceState };
 }

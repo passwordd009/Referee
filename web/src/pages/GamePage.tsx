@@ -112,10 +112,10 @@ export function GamePage() {
     livekitUrl: LIVEKIT_URL,
   });
 
-  // Local AI laugh detection: face-api.js watches the webcam, and any
-  // frame scoring above the smile threshold is reported to the server.
-  // The server applies the cooldown and active-player immunity.
-  const { stream: localStream, error: cameraError } = useLocalCamera({
+  // Local AI laugh detection: face-api.js watches the webcam, and a
+  // sustained smile above the threshold is reported to the server.
+  // The server applies its own cooldown and active-player immunity.
+  const { stream: localStream, status: cameraStatus, error: cameraError, faceState } = useLocalCamera({
     onLaugh: (confidence) => {
       socket.emit('laugh_detected', { roomCode, userId, confidence });
     },
@@ -186,7 +186,32 @@ export function GamePage() {
             >
               <div className="gp-tile__screen">
                 {isSelf ? (
-                  <LocalVideo stream={localStream} />
+                  <>
+                    <LocalVideo stream={localStream} />
+                    {/* Live AI status — proof the laugh detector is watching */}
+                    <div className="gp-ai">
+                      {cameraStatus === 'starting' && (
+                        <span className="gp-ai__label">AI starting…</span>
+                      )}
+                      {cameraStatus === 'error' && (
+                        <span className="gp-ai__label gp-ai__label--err">AI off</span>
+                      )}
+                      {cameraStatus === 'active' && faceState && !faceState.faceDetected && (
+                        <span className="gp-ai__label gp-ai__label--warn">face?</span>
+                      )}
+                      {cameraStatus === 'active' && faceState?.faceDetected && (
+                        <>
+                          <span className="gp-ai__dot" />
+                          <div className="gp-ai__meter">
+                            <div
+                              className={`gp-ai__meter-fill ${faceState.smileScore >= 0.5 ? 'gp-ai__meter-fill--hot' : ''}`}
+                              style={{ width: `${Math.round(faceState.smileScore * 100)}%` }}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
                 ) : (
                   <RemoteVideo track={remotePt?.videoTrack ?? null} />
                 )}

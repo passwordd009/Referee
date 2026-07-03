@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Laugh Detection Test — Laugh Table</title>
+    <style>
+      body { margin: 0; background: #000; color: #eee; font-family: monospace; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px; }
+      video { width: 480px; max-width: 90vw; border-radius: 8px; border: 2px solid #333; transform: scaleX(-1); }
+      #meter { width: 480px; max-width: 90vw; height: 18px; background: #222; border-radius: 9px; overflow: hidden; }
+      #meter-fill { height: 100%; width: 0%; background: #4ade80; transition: width 0.1s; }
+      #meter-fill.hot { background: #f87171; }
+      #status { font-size: 14px; }
+      #log { font-size: 11px; opacity: 0.6; white-space: pre; max-height: 160px; overflow-y: auto; }
+    </style>
+  </head>
+  <body>
+    <h2>🎥 Laugh Detection Test</h2>
+    <p>Look at the camera and smile — the meter should spike and a LAUGH event should fire.</p>
+    <video id="cam" autoplay playsinline muted></video>
+    <div id="meter"><div id="meter-fill"></div></div>
+    <div id="status">starting…</div>
+    <div id="log"></div>
+    <script type="module">
+      import { startWebcam } from '/src/vision/webcam.ts';
+      import { initFaceLandmarker } from '/src/vision/faceLandmarker.ts';
+      import { startVisionLoop } from '/src/vision/visionLoop.ts';
+      import { SMILE_THRESHOLDS } from '/src/vision/smileDetector.ts';
+
+      // Machine-readable results for automated tests.
+      const T = window.__visionTest = {
+        phase: 'init', errors: [], scores: [], violations: 0,
+        framesWithFace: 0, framesWithoutFace: 0,
+      };
+
+      const statusEl = document.getElementById('status');
+      const logEl = document.getElementById('log');
+      const fill = document.getElementById('meter-fill');
+      const log = (m) => { logEl.textContent = `${m}\n` + logEl.textContent.slice(0, 4000); };
+
+      (async () => {
+      try {
+        T.phase = 'webcam';
+        const video = document.getElementById('cam');
+        const cam = await startWebcam(video);
+        if ('error' in cam) throw new Error('webcam: ' + JSON.stringify(cam.error));
+        log(`webcam ok: ${video.videoWidth}x${video.videoHeight}`);
+
+        T.phase = 'models';
+        statusEl.textContent = 'loading AI models…';
+        await initFaceLandmarker();
+        log('models loaded');
+
+        T.phase = 'running';
+        statusEl.textContent = 'watching for laughs…';
+        startVisionLoop({
+          videoEl: video,
+          smileThreshold: SMILE_THRESHOLDS.violation,
+          onEvent: (e) => {
+            if (e.type === 'FACE_NOT_DETECTED') {
+              T.framesWithoutFace++;
+              statusEl.textContent = '❌ no face detected';
+              fill.style.width = '0%';
+            } else if (e.type === 'SMILE_SCORE_UPDATE') {
+              T.framesWithFace++;
+              T.scores.push(e.faceState.smileScore);
+              const pct = Math.round(e.faceState.smileScore * 100);
+              fill.style.width = pct + '%';
+              fill.className = e.faceState.smileScore >= SMILE_THRESHOLDS.violation ? 'hot' : '';
+              statusEl.textContent = `✅ face detected — smile score ${pct}%`;
+            } else if (e.type === 'VIOLATION_DETECTED') {
+              T.violations++;
+              log(`LAUGH DETECTED! score=${e.faceState.smileScore.toFixed(2)}`);
+            }
+          },
+        });
+      } catch (err) {
+        T.phase = 'error';
+        T.errors.push(String(err));
+        statusEl.textContent = '💥 ' + err;
+        console.error(err);
+      }
+      })();
+    </script>
+  </body>
+</html>

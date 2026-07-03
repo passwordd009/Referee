@@ -19,12 +19,27 @@ server for analysis.
    (TinyFaceDetector + 68-point landmarks, models in `web/public/weights/`).
 3. `smileDetector` scores each frame 0→1 from two signals: mouth-corner rise
    and mouth width, both normalized by face width.
-4. A score ≥ 0.5 emits `laugh_detected` over Socket.IO.
+4. A score ≥ 0.5 sustained for 3 consecutive frames emits `laugh_detected`
+   over Socket.IO (single glitchy frames never count, and a long laugh is
+   reported at most once every 2 seconds).
 5. The server (`MatchEngine.processLaugh`) validates it — 3-second cooldown per
    player, the performing player is immune — then deducts a life and broadcasts
    `life_removed` to the room.
-6. Every client blows the whistle 🔴 (synthesized with the Web Audio API — no
+6. Every client blows the whistle (synthesized with the Web Audio API — no
    audio file) and shows the penalty banner.
+
+During a match, your own tile shows a live AI status strip: a green dot and
+smile meter while your face is tracked, "face?" if you leave the frame, and
+"AI off" if the camera failed.
+
+### Verifying laugh detection
+
+Open **`/vision-test.html`** (works in dev and production builds). It runs the
+exact same camera + AI pipeline as a match and shows a live smile meter — if
+the meter moves when you smile, laugh detection works in your browser. The
+pipeline is also covered by automated browser tests that feed a fake webcam:
+a smiling face must fire a laugh event and a talking-but-not-smiling face
+must not.
 
 ## Project layout
 

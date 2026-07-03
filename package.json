@@ -12,7 +12,8 @@
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",
-    "concurrently": "^9.0.0"
+    "concurrently": "^9.0.0",
+    "playwright-core": "^1.61.1"
   },
   "dependencies": {
     "ws": "^8.20.0"

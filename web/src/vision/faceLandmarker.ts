@@ -1,28 +1,53 @@
 import * as faceapi from 'face-api.js';
 
-let _loaded = false;
+/**
+ * Face detection + landmarks via face-api.js.
+ *
+ * Models (in web/public/weights/):
+ *  - TinyFaceDetector — fast face localization, good enough for webcams.
+ *  - FaceLandmark68Net — 68 facial landmark points for smile scoring.
+ */
 
-export async function initFaceLandmarker(): Promise<void> {
-  if (_loaded) return;
-  // TinyFaceDetector for reliable detection + full 68-point model for accurate landmarks
-  await Promise.all([
-    faceapi.nets.tinyFaceDetector.loadFromUri('/weights'),
-    faceapi.nets.faceLandmark68Net.loadFromUri('/weights'),
-  ]);
-  _loaded = true;
+let loadPromise: Promise<void> | null = null;
+
+/** Load the models once. Concurrent callers share the same load. */
+export function initFaceLandmarker(): Promise<void> {
+  if (!loadPromise) {
+    loadPromise = Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri('/weights'),
+      faceapi.nets.faceLandmark68Net.loadFromUri('/weights'),
+    ]).then(() => undefined).catch((err) => {
+      loadPromise = null; // allow a retry after e.g. a network blip
+      throw err;
+    });
+  }
+  return loadPromise;
 }
 
+// One reusable offscreen canvas — allocating a new one per frame churns GC.
+let frameCanvas: HTMLCanvasElement | null = null;
+
+/**
+ * Detect the most prominent face (with landmarks) in the current video
+ * frame. Returns undefined when the video isn't ready or no face is found.
+ */
 export async function detectFaceLandmarks(videoEl: HTMLVideoElement) {
   if (videoEl.videoWidth === 0) return undefined;
 
-  // Draw to offscreen canvas — avoids browser restrictions on direct video→WebGL reads
-  const canvas = document.createElement('canvas');
-  canvas.width = videoEl.videoWidth;
-  canvas.height = videoEl.videoHeight;
-  const ctx = canvas.getContext('2d')!;
+  // Draw to a canvas first — avoids browser restrictions on direct
+  // video→WebGL reads and keeps input dimensions stable.
+  if (!frameCanvas) frameCanvas = document.createElement('canvas');
+  if (frameCanvas.width !== videoEl.videoWidth) frameCanvas.width = videoEl.videoWidth;
+  if (frameCanvas.height !== videoEl.videoHeight) frameCanvas.height = videoEl.videoHeight;
+
+  const ctx = frameCanvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return undefined;
   ctx.drawImage(videoEl, 0, 0);
 
   return faceapi
-    .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.15, inputSize: 416 }))
+    .detectSingleFace(
+      frameCanvas,
+      new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.15, inputSize: 416 })
+    )
     .withFaceLandmarks();
 }
