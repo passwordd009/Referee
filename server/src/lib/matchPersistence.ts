@@ -1,7 +1,10 @@
 import { supabase } from './supabase.js';
 import type { Room } from '../game/RoomManager.js';
 
+/** Save a finished match to Supabase. No-op when Supabase isn't configured. */
 export async function saveMatch(room: Room, winnerId: string | null): Promise<void> {
+  if (!supabase) return;
+
   const players = Array.from(room.players.values());
 
   const { data: match, error: matchErr } = await supabase

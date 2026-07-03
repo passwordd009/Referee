@@ -1,12 +1,34 @@
 import { useEffect, useReducer, useRef, useCallback } from 'react';
 import { socket } from '../lib/socket';
 
+/**
+ * Client-side match state, driven entirely by server socket events.
+ *
+ * Turn flow (server → client):
+ *   anonymous_turn_started → everyone sees "someone is performing"
+ *   your_turn              → only the active player learns it's them
+ *   bit_played             → the bit content is shown to the room
+ *   life_removed           → someone lost a life (laughed / caught / wrong guess)
+ *   turn_revealed          → the performer's identity is revealed
+ *   match_finished         → winner + stats
+ */
+
 export interface GamePlayer {
   userId: string;
   username: string;
   livesRemaining: number;
   isEliminated: boolean;
   isBot: boolean;
+}
+
+/** Why a player lost a life — matches the server's `life_removed.reason`. */
+export type PenaltyReason = 'laughed' | 'caught' | 'wrong_guess';
+
+export interface Penalty {
+  playerId: string;
+  reason: PenaltyReason;
+  /** Changes on every penalty so repeat offenders retrigger the banner. */
+  key: number;
 }
 
 type Phase = 'loading' | 'turn_active' | 'turn_reveal' | 'finished';
@@ -20,20 +42,23 @@ interface State {
   timeLeft: number;
   turnDurationMs: number;
   result: { winnerId: string | null; stats: Record<string, unknown> } | null;
-  laughFlash: { playerId: string } | null;
+  /** Most recent life loss — drives the whistle + banner. Auto-clears. */
+  penalty: Penalty | null;
 }
 
 type Action =
   | { type: 'INIT'; players: GamePlayer[] }
-  | { type: 'TURN_START'; durationMs: number; myTurn: boolean }
-  | { type: 'MY_TURN'; durationMs: number }
+  | { type: 'TURN_START'; durationMs: number }
+  | { type: 'MY_TURN' }
   | { type: 'BIT_PLAYED'; textContent?: string }
   | { type: 'TURN_REVEAL'; playerId: string; username: string }
-  | { type: 'LIFE_REMOVED'; playerId: string; livesRemaining: number }
+  | { type: 'LIFE_REMOVED'; playerId: string; livesRemaining: number; reason: PenaltyReason }
   | { type: 'PLAYER_ELIMINATED'; playerId: string }
-  | { type: 'LAUGH_FLASH'; playerId: string }
+  | { type: 'CLEAR_PENALTY'; key: number }
   | { type: 'MATCH_FINISHED'; winnerId: string | null; stats: Record<string, unknown> }
   | { type: 'TICK' };
+
+let penaltyCounter = 0;
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -44,10 +69,9 @@ function reducer(state: State, action: Action): State {
       return {
         ...state,
         phase: 'turn_active',
-        myTurn: action.myTurn,
+        myTurn: false,
         activeBit: null,
         revealedPlayer: null,
-        laughFlash: null,
         timeLeft: Math.round(action.durationMs / 1000),
         turnDurationMs: action.durationMs,
       };
@@ -72,7 +96,7 @@ function reducer(state: State, action: Action): State {
         players: state.players.map(p =>
           p.userId === action.playerId ? { ...p, livesRemaining: action.livesRemaining } : p
         ),
-        laughFlash: { playerId: action.playerId },
+        penalty: { playerId: action.playerId, reason: action.reason, key: ++penaltyCounter },
       };
 
     case 'PLAYER_ELIMINATED':
@@ -83,8 +107,9 @@ function reducer(state: State, action: Action): State {
         ),
       };
 
-    case 'LAUGH_FLASH':
-      return { ...state, laughFlash: { playerId: action.playerId } };
+    case 'CLEAR_PENALTY':
+      // Only clear if a newer penalty hasn't replaced this one.
+      return state.penalty?.key === action.key ? { ...state, penalty: null } : state;
 
     case 'MATCH_FINISHED':
       return { ...state, phase: 'finished', result: { winnerId: action.winnerId, stats: action.stats } };
@@ -106,8 +131,11 @@ const initial: State = {
   timeLeft: 0,
   turnDurationMs: 20_000,
   result: null,
-  laughFlash: null,
+  penalty: null,
 };
+
+/** How long the whistle banner stays on screen. */
+const PENALTY_BANNER_MS = 3_000;
 
 export function useGameSocket(roomCode: string, userId: string) {
   const [state, dispatch] = useReducer(reducer, initial);
@@ -123,19 +151,19 @@ export function useGameSocket(roomCode: string, userId: string) {
   };
 
   useEffect(() => {
-    // Fetch current match state (socket was kept alive from lobby)
+    // The socket stayed connected from the lobby — fetch current match state.
     socket.emit('get_match_state', { roomCode }, (res: { ok: boolean; room?: { players: GamePlayer[] } }) => {
       if (!res.ok || !res.room) return;
       dispatch({ type: 'INIT', players: res.room.players });
     });
 
     socket.on('anonymous_turn_started', ({ durationMs }: { durationMs: number }) => {
-      dispatch({ type: 'TURN_START', durationMs, myTurn: false });
+      dispatch({ type: 'TURN_START', durationMs });
       startTick();
     });
 
-    socket.on('your_turn', ({ durationMs }: { durationMs: number }) => {
-      dispatch({ type: 'MY_TURN', durationMs });
+    socket.on('your_turn', () => {
+      dispatch({ type: 'MY_TURN' });
     });
 
     socket.on('bit_played', ({ textContent }: { textContent?: string }) => {
@@ -147,12 +175,12 @@ export function useGameSocket(roomCode: string, userId: string) {
       dispatch({ type: 'TURN_REVEAL', playerId, username });
     });
 
-    socket.on('life_removed', ({ playerId, livesRemaining }: { playerId: string; livesRemaining: number }) => {
-      dispatch({ type: 'LIFE_REMOVED', playerId, livesRemaining });
-    });
-
-    socket.on('laugh_detected', ({ playerId }: { playerId: string }) => {
-      dispatch({ type: 'LAUGH_FLASH', playerId });
+    socket.on('life_removed', ({ playerId, livesRemaining, reason }: {
+      playerId: string; livesRemaining: number; reason: PenaltyReason;
+    }) => {
+      dispatch({ type: 'LIFE_REMOVED', playerId, livesRemaining, reason });
+      const key = penaltyCounter;
+      setTimeout(() => dispatch({ type: 'CLEAR_PENALTY', key }), PENALTY_BANNER_MS);
     });
 
     socket.on('player_eliminated', ({ playerId }: { playerId: string }) => {
@@ -171,17 +199,18 @@ export function useGameSocket(roomCode: string, userId: string) {
       socket.off('bit_played');
       socket.off('turn_revealed');
       socket.off('life_removed');
-      socket.off('laugh_detected');
       socket.off('player_eliminated');
       socket.off('match_finished');
       socket.disconnect();
     };
   }, [roomCode]);
 
+  /** Active player: perform a bit for the room. */
   const playBit = useCallback((textContent: string) => {
     socket.emit('play_bit', { roomCode, userId, mediaType: 'text', textContent });
   }, [roomCode, userId]);
 
+  /** Active player: pass without performing. */
   const skipTurn = useCallback(() => {
     socket.emit('skip_turn', { roomCode, userId });
   }, [roomCode, userId]);

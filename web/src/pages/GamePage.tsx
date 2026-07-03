@@ -1,16 +1,19 @@
 /// <reference types="vite/client" />
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { RemoteTrack } from 'livekit-client';
 import { useAuth } from '../auth/AuthContext';
-import { useGameSocket } from '../hooks/useGameSocket';
+import { useGameSocket, type Penalty, type GamePlayer } from '../hooks/useGameSocket';
 import { useLiveKit } from '../hooks/useLiveKit';
 import { useLocalCamera } from '../hooks/useLocalCamera';
 import { socket } from '../lib/socket';
+import { playWhistle } from '../lib/whistle';
+import { refereeLine } from '../lib/refereeLines';
 
 const SERVER_URL  = (import.meta.env.VITE_SERVER_URL  as string | undefined) ?? 'http://localhost:3001';
 const LIVEKIT_URL = (import.meta.env.VITE_LIVEKIT_URL as string | undefined) ?? '';
 
+/** Fallback bits for players with an empty inventory. */
 const PLAYER_BITS = [
   "I asked my dog what two minus two is. He said nothing.",
   "Why do cows wear bells? Because their horns don't work.",
@@ -19,6 +22,7 @@ const PLAYER_BITS = [
   "I'm on a seafood diet. I see food and I eat it.",
 ];
 
+/** Row of hearts showing a player's remaining lives. */
 function Lives({ count, max }: { count: number; max: number }) {
   return (
     <div className="gp-lives">
@@ -29,7 +33,7 @@ function Lives({ count, max }: { count: number; max: number }) {
   );
 }
 
-// Attaches a LiveKit remote track to a <video> element imperatively
+/** Another player's LiveKit camera feed. */
 function RemoteVideo({ track }: { track: RemoteTrack | null }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -43,7 +47,7 @@ function RemoteVideo({ track }: { track: RemoteTrack | null }) {
   return <video ref={videoRef} autoPlay playsInline muted className="gp-tile__video" />;
 }
 
-// Self-view: attaches the local camera stream to a <video> element
+/** Your own camera feed (the same stream the laugh detector watches). */
 function LocalVideo({ stream }: { stream: MediaStream | null }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -56,25 +60,62 @@ function LocalVideo({ stream }: { stream: MediaStream | null }) {
   return <video ref={videoRef} autoPlay playsInline muted className="gp-tile__video" />;
 }
 
+/**
+ * Full-screen whistle moment: blows the whistle sound and announces
+ * who lost a life. Rendered while a penalty is active (~3s).
+ */
+function WhistleBanner({ penalty, players }: { penalty: Penalty; players: GamePlayer[] }) {
+  const name = players.find(p => p.userId === penalty.playerId)?.username ?? 'Someone';
+
+  // One whistle per penalty — keyed so back-to-back penalties re-blow.
+  useEffect(() => { playWhistle(); }, [penalty.key]);
+
+  // Pick the referee line once per penalty, not on every re-render.
+  const line = useMemo(() => refereeLine(penalty.reason, name), [penalty.key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="gp-whistle" key={penalty.key}>
+      <svg className="gp-whistle__icon" viewBox="0 0 64 64" aria-label="referee whistle" role="img">
+        {/* Simple referee whistle: mouthpiece + round chamber */}
+        <rect x="4" y="22" width="34" height="12" rx="4" fill="currentColor" />
+        <circle cx="42" cy="38" r="16" fill="currentColor" />
+        <circle cx="42" cy="38" r="6" fill="#0a0a0a" />
+        {/* Sound lines */}
+        <path d="M56 14 L62 8 M58 22 L64 20 M50 10 L52 3" stroke="currentColor" strokeWidth="3" strokeLinecap="round" fill="none" />
+      </svg>
+      <div className="gp-whistle__text">
+        <span className="gp-whistle__title">TWEEET!</span>
+        <span className="gp-whistle__line">{line}</span>
+      </div>
+    </div>
+  );
+}
+
 export function GamePage() {
-  const { code = '' }    = useParams<{ code: string }>();
-  const { user }         = useAuth();
-  const navigate         = useNavigate();
+  const { code = '' } = useParams<{ code: string }>();
+  const { user }      = useAuth();
+  const navigate      = useNavigate();
 
   const userId   = user!.id;
   const username = (user?.user_metadata?.username as string | undefined) ?? user?.email ?? 'Player';
   const roomCode = code.toUpperCase();
 
-  const { phase, players, myTurn, activeBit, revealedPlayer, timeLeft, turnDurationMs, result, laughFlash, playBit, skipTurn } =
-    useGameSocket(roomCode, userId);
+  const {
+    phase, players, myTurn, activeBit, revealedPlayer,
+    timeLeft, turnDurationMs, result, penalty, playBit, skipTurn,
+  } = useGameSocket(roomCode, userId);
 
+  // Player-to-player video (silently disabled when LiveKit isn't configured).
   const { remoteParticipants } = useLiveKit({
     roomCode, userId, username,
     serverUrl:  SERVER_URL,
     livekitUrl: LIVEKIT_URL,
   });
 
-  const { stream: localStream } = useLocalCamera({
+  // Local AI laugh detection: face-api.js watches the webcam, and any
+  // frame scoring above the smile threshold is reported to the server.
+  // The server applies the cooldown and active-player immunity.
+  const { stream: localStream, error: cameraError } = useLocalCamera({
     onLaugh: (confidence) => {
       socket.emit('laugh_detected', { roomCode, userId, confidence });
     },
@@ -123,11 +164,14 @@ export function GamePage() {
 
   return (
     <div className="gp-page">
+      {/* Whistle moment — sound + banner when anyone loses a life */}
+      {penalty && <WhistleBanner penalty={penalty} players={players} />}
+
       {/* Player tiles — one per player with live video */}
       <div className="gp-tiles">
         {players.map(p => {
-          const isSelf   = p.userId === userId;
-          // Match remote participant by userId encoded in identity "username__userId"
+          const isSelf = p.userId === userId;
+          // LiveKit identities are "username__userId" — match on the userId suffix.
           const remotePt = remoteParticipants.find(r => r.identity.endsWith(`__${p.userId}`));
 
           return (
@@ -135,12 +179,11 @@ export function GamePage() {
               key={p.userId}
               className={[
                 'gp-tile',
-                p.isEliminated      ? 'gp-tile--eliminated'  : '',
-                laughFlash?.playerId === p.userId ? 'gp-tile--laugh' : '',
-                isSelf              ? 'gp-tile--self'         : '',
+                p.isEliminated ? 'gp-tile--eliminated' : '',
+                penalty?.playerId === p.userId ? 'gp-tile--laugh' : '',
+                isSelf ? 'gp-tile--self' : '',
               ].join(' ')}
             >
-              {/* Video area */}
               <div className="gp-tile__screen">
                 {isSelf ? (
                   <LocalVideo stream={localStream} />
@@ -158,6 +201,11 @@ export function GamePage() {
           );
         })}
       </div>
+
+      {/* Camera problems block laugh detection — tell the player loudly */}
+      {cameraError && (
+        <p className="gp-camera-error">⚠ {cameraError} — laugh detection is off</p>
+      )}
 
       {/* Main content */}
       <div className="gp-main">
@@ -199,7 +247,7 @@ export function GamePage() {
         )}
       </div>
 
-      {/* Timer bar */}
+      {/* Turn timer */}
       {phase === 'turn_active' && (
         <div className="gp-timer">
           <div className="gp-timer__bar">

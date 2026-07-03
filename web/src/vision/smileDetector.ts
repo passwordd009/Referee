@@ -1,7 +1,18 @@
 import type { WithFaceLandmarks, WithFaceDetection, FaceLandmarks68 } from 'face-api.js';
 import type { FaceState, FaceBox } from '../types';
 
-// face-api.js 68-point landmark indices
+/**
+ * Smile scoring from face-api.js 68-point landmarks.
+ *
+ * A smile shows up in two ways:
+ *  1. The mouth corners rise above the lip midline ("corner rise").
+ *  2. The mouth gets wider relative to the face ("width ratio").
+ *
+ * Both signals are normalized against face width so the score is
+ * independent of how close the player sits to the camera.
+ */
+
+// Landmark indices in the 68-point model.
 const LM = {
   JAW_LEFT: 0,
   JAW_RIGHT: 16,
@@ -11,6 +22,7 @@ const LM = {
   LIP_BOTTOM: 57,
 } as const;
 
+/** Score thresholds: `violation` counts as a laugh, `laugh` is a big laugh. */
 export const SMILE_THRESHOLDS = {
   violation: 0.5,
   laugh: 0.75,
@@ -22,28 +34,28 @@ function clamp(v: number, min: number, max: number) {
   return Math.min(Math.max(v, min), max);
 }
 
+/** Convert a raw face-api.js detection into a scored FaceState. */
 export function detectionToFaceState(det: Detection, timestamp: number): FaceState {
   const pts = det.landmarks.positions;
   const faceWidth = Math.abs(pts[LM.JAW_RIGHT].x - pts[LM.JAW_LEFT].x);
 
   if (faceWidth < 1) return { faceDetected: true, smileScore: 0, mouthOpen: false, timestamp };
 
+  // How far the mouth corners sit above the lip midline (positive = smiling).
   const midLipY = (pts[LM.LIP_TOP].y + pts[LM.LIP_BOTTOM].y) / 2;
   const avgRise = ((midLipY - pts[LM.MOUTH_LEFT].y) + (midLipY - pts[LM.MOUTH_RIGHT].y)) / 2;
+
+  // How wide the mouth is relative to the face (resting ratio ≈ 0.35).
   const mouthWidth = Math.abs(pts[LM.MOUTH_RIGHT].x - pts[LM.MOUTH_LEFT].x);
   const widthRatio = mouthWidth / faceWidth;
 
-  // Normalize: smile rise ~5-8% of face width; resting width ratio ~0.35
+  // A full smile rises ~6% of face width and widens the ratio by ~0.15.
   const cornerScore = clamp(avgRise / (faceWidth * 0.06), 0, 1);
   const widthScore = clamp((widthRatio - 0.35) / 0.15, 0, 1);
   const smileScore = 0.6 * cornerScore + 0.4 * widthScore;
 
   const vertGap = Math.abs(pts[LM.LIP_BOTTOM].y - pts[LM.LIP_TOP].y);
   const mouthOpen = vertGap > faceWidth * 0.05;
-
-  console.log(
-    `[smile] score=${smileScore.toFixed(3)} corner=${cornerScore.toFixed(3)} width=${widthScore.toFixed(3)} rise=${avgRise.toFixed(1)}px ratio=${widthRatio.toFixed(3)} faceW=${faceWidth.toFixed(0)}px`
-  );
 
   const { x, y, width, height } = det.detection.box;
   const box: FaceBox = { x, y, width, height };
@@ -52,6 +64,7 @@ export function detectionToFaceState(det: Detection, timestamp: number): FaceSta
   return { faceDetected: true, smileScore, mouthOpen, timestamp, box, landmarks };
 }
 
+/** FaceState for frames where no face was found. */
 export const noFaceState = (timestamp: number): FaceState => ({
   faceDetected: false,
   smileScore: 0,
