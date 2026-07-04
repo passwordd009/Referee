@@ -67,6 +67,32 @@ Key modules:
 | `web/src/lib/whistle.ts` | Synthesized referee whistle sound |
 | `server/src/game/MatchEngine.ts` | Turns, bits, guesses, laugh penalties, win detection |
 | `server/src/game/LaughProcessor.ts` | Laugh cooldown + confidence threshold |
+| `server/src/lib/progression.ts` | XP / tickets / crowns helpers (atomic, no gameplay hooks yet) |
+| `server/src/lib/auth.ts` | JWT verification middleware for authenticated API routes |
+| `server/src/routes/profile.ts` | `GET/PATCH /api/me/profile` |
+| `server/src/routes/reports.ts` | Player & bit reporting endpoints |
+
+## Progression & security foundation
+
+Run `supabase/migrations/003_progression_and_security.sql` to get:
+
+- **XP & level** on profiles (level = `floor(sqrt(xp/100)) + 1`). Awarded by
+  future public/ranked matches via `addXP()` — nothing awards XP yet.
+- **Tickets** (earnable currency, future cosmetics) and **crowns** (premium
+  currency, schema only — no payments). All balance changes go through
+  atomic SQL functions that can never produce a negative balance, callable
+  only by the game server's service role.
+- **Age verification**: signup requires a date of birth and enforces a
+  minimum age (`VITE_MIN_AGE`, default 13). Passwords remain entirely in
+  Supabase Auth — never stored by the app.
+- **Moderation foundation**: a `reports` table (players and bits, validated
+  reasons per type, duplicate-report protection), plus `moderation_status`
+  and `visibility` fields on bits for a future review queue.
+- **Authenticated API**: `/api/me/*` and report endpoints verify the
+  Supabase JWT server-side; the caller's identity always comes from the
+  token, never the request body.
+- **Profile page** at `/profile`: level + XP progress, tickets, crowns,
+  win rate, laughs-per-match, and username settings.
 
 ## Getting started
 
@@ -103,6 +129,7 @@ Client (`web/.env`):
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | yes | Sign-in / sign-up |
 | `VITE_SERVER_URL` | yes | Game server address |
 | `VITE_LIVEKIT_URL` | no | Player-to-player video |
+| `VITE_MIN_AGE` | no | Minimum signup age (default 13) |
 
 Server (`server/.env`):
 

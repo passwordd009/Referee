@@ -5,6 +5,8 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import roomRoutes from './routes/rooms.js';
 import bitRoutes from './routes/bits.js';
+import profileRoutes from './routes/profile.js';
+import reportRoutes from './routes/reports.js';
 import { registerRoomHandlers } from './socket/roomHandlers.js';
 import { registerMatchHandlers } from './socket/matchHandlers.js';
 import { registerLaughHandlers } from './socket/laughHandlers.js';
@@ -24,6 +26,8 @@ app.use(express.json());
 
 app.use('/api/rooms', roomRoutes);
 app.use('/api/bits', bitRoutes);
+app.use('/api/me', profileRoutes);
+app.use('/api', reportRoutes);
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 

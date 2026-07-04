@@ -2,10 +2,25 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
+/// <reference types="vite/client" />
+/** Minimum age to create an account. */
+const MIN_AGE = Number((import.meta.env.VITE_MIN_AGE as string | undefined) ?? 13);
+
+function ageOn(dateOfBirth: string, today = new Date()): number {
+  const dob = new Date(dateOfBirth);
+  let age = today.getFullYear() - dob.getFullYear();
+  const hadBirthday =
+    today.getMonth() > dob.getMonth() ||
+    (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+  if (!hadBirthday) age -= 1;
+  return age;
+}
+
 export function SignupPage() {
   const [username, setUsername] = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
+  const [dob, setDob]           = useState('');
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
 
@@ -20,12 +35,26 @@ export function SignupPage() {
       return;
     }
 
+    if (!dob) {
+      setError('Date of birth is required');
+      return;
+    }
+    const age = ageOn(dob);
+    if (age < 0 || age > 120) {
+      setError('Please enter a valid date of birth');
+      return;
+    }
+    if (age < MIN_AGE) {
+      setError(`You must be at least ${MIN_AGE} years old to play`);
+      return;
+    }
+
     setLoading(true);
 
     const { error: err } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { username: username.trim() } },
+      options: { data: { username: username.trim(), date_of_birth: dob } },
     });
 
     setLoading(false);
@@ -76,6 +105,19 @@ export function SignupPage() {
               onChange={e => setPassword(e.target.value)}
               required
               minLength={8}
+            />
+          </label>
+
+          <label className="auth-label">
+            Date of birth
+            <input
+              className="auth-input"
+              type="date"
+              autoComplete="bday"
+              value={dob}
+              onChange={e => setDob(e.target.value)}
+              required
+              max={new Date().toISOString().slice(0, 10)}
             />
           </label>
 

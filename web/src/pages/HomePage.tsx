@@ -41,6 +41,7 @@ export function HomePage() {
   return (
     <div className="home-page">
       <header className="game-header">
+        <button className="btn btn-ghost" onClick={() => navigate('/profile')}>Profile</button>
         <span className="game-header__user">{username}</span>
         <button className="btn btn-ghost game-header__signout" onClick={signOut}>Sign out</button>
       </header>
