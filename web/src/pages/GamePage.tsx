@@ -202,6 +202,9 @@ export function GamePage() {
                       {cameraStatus === 'active' && faceState?.faceDetected && (
                         <>
                           <span className="gp-ai__dot" />
+                          {faceState.lowLight && (
+                            <span className="gp-ai__label" title="Low light — video boosted for the AI">🌙</span>
+                          )}
                           <div className="gp-ai__meter">
                             <div
                               className={`gp-ai__meter-fill ${faceState.smileScore >= 0.5 ? 'gp-ai__meter-fill--hot' : ''}`}

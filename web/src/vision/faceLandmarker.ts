@@ -1,4 +1,5 @@
 import * as faceapi from 'face-api.js';
+import { enhanceLowLight } from './enhance';
 
 /**
  * Face detection + landmarks via face-api.js.
@@ -43,6 +44,10 @@ export async function detectFaceLandmarks(videoEl: HTMLVideoElement) {
   const ctx = frameCanvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return undefined;
   ctx.drawImage(videoEl, 0, 0);
+
+  // Brighten dark frames before the AI sees them — dim rooms are the
+  // most common reason face detection fails on real webcams.
+  enhanceLowLight(ctx, frameCanvas.width, frameCanvas.height);
 
   return faceapi
     .detectSingleFace(

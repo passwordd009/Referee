@@ -15,17 +15,22 @@ Everything runs **locally in each player's browser** — no video is sent to the
 server for analysis.
 
 1. `useLocalCamera` opens the webcam into a hidden `<video>` element.
-2. `visionLoop` analyzes frames with [face-api.js](https://github.com/justadudewhohacks/face-api.js)
+2. Each frame passes through an adaptive low-light filter (`vision/enhance.ts`):
+   if even the brightest parts of the frame are dim, the brightness range is
+   auto-leveled to full contrast before the AI sees it. Detection works down
+   to roughly 10% of normal room lighting; well-lit frames are untouched. A
+   🌙 icon appears on your tile while the boost is active.
+3. `visionLoop` analyzes frames with [face-api.js](https://github.com/justadudewhohacks/face-api.js)
    (TinyFaceDetector + 68-point landmarks, models in `web/public/weights/`).
-3. `smileDetector` scores each frame 0→1 from two signals: mouth-corner rise
+4. `smileDetector` scores each frame 0→1 from two signals: mouth-corner rise
    and mouth width, both normalized by face width.
-4. A score ≥ 0.5 sustained for 3 consecutive frames emits `laugh_detected`
+5. A score ≥ 0.5 sustained for 3 consecutive frames emits `laugh_detected`
    over Socket.IO (single glitchy frames never count, and a long laugh is
    reported at most once every 2 seconds).
-5. The server (`MatchEngine.processLaugh`) validates it — 3-second cooldown per
+6. The server (`MatchEngine.processLaugh`) validates it — 3-second cooldown per
    player, the performing player is immune — then deducts a life and broadcasts
    `life_removed` to the room.
-6. Every client blows the whistle (synthesized with the Web Audio API — no
+7. Every client blows the whistle (synthesized with the Web Audio API — no
    audio file) and shows the penalty banner.
 
 During a match, your own tile shows a live AI status strip: a green dot and

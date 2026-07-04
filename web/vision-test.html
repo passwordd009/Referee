@@ -26,6 +26,7 @@
       import { initFaceLandmarker } from '/src/vision/faceLandmarker.ts';
       import { startVisionLoop } from '/src/vision/visionLoop.ts';
       import { SMILE_THRESHOLDS } from '/src/vision/smileDetector.ts';
+      import { getEnhancementState } from '/src/vision/enhance.ts';
 
       // Machine-readable results for automated tests.
       const T = window.__visionTest = {
@@ -67,7 +68,9 @@
               const pct = Math.round(e.faceState.smileScore * 100);
               fill.style.width = pct + '%';
               fill.className = e.faceState.smileScore >= SMILE_THRESHOLDS.violation ? 'hot' : '';
-              statusEl.textContent = `✅ face detected — smile score ${pct}%`;
+              const boost = getEnhancementState().boosting ? ' · 🌙 low-light boost on' : '';
+              T.boosting = getEnhancementState().boosting;
+              statusEl.textContent = `✅ face detected — smile score ${pct}%${boost}`;
             } else if (e.type === 'VIOLATION_DETECTED') {
               T.violations++;
               log(`LAUGH DETECTED! score=${e.faceState.smileScore.toFixed(2)}`);

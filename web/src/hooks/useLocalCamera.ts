@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { startWebcam, stopWebcam } from '../vision/webcam';
 import { startVisionLoop } from '../vision/visionLoop';
 import { initFaceLandmarker } from '../vision/faceLandmarker';
+import { getEnhancementState } from '../vision/enhance';
 import { SMILE_THRESHOLDS } from '../vision/smileDetector';
 
 /**
@@ -25,6 +26,8 @@ export interface LiveFaceState {
   faceDetected: boolean;
   /** 0 (straight face) → 1 (big laugh). */
   smileScore: number;
+  /** True while the low-light boost is brightening frames for the AI. */
+  lowLight: boolean;
 }
 
 export type CameraStatus = 'starting' | 'active' | 'error';
@@ -55,7 +58,9 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
     // the game UI doesn't re-render 30 times a second.
     let latest: LiveFaceState | null = null;
     const syncTimer = setInterval(() => {
-      if (!cancelled && latest) setFaceState({ ...latest });
+      if (!cancelled && latest) {
+        setFaceState({ ...latest, lowLight: getEnhancementState().boosting });
+      }
     }, 200);
 
     // Hidden video element the vision loop reads frames from. The visible
@@ -100,12 +105,12 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
         smileThreshold: SMILE_THRESHOLDS.violation,
         onEvent: (event) => {
           if (event.type === 'FACE_NOT_DETECTED') {
-            latest = { faceDetected: false, smileScore: 0 };
+            latest = { faceDetected: false, smileScore: 0, lowLight: false };
             streak = 0;
             return;
           }
 
-          latest = { faceDetected: true, smileScore: event.faceState.smileScore };
+          latest = { faceDetected: true, smileScore: event.faceState.smileScore, lowLight: false };
 
           if (event.type === 'VIOLATION_DETECTED') {
             streak += 1;
