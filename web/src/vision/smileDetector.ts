@@ -49,6 +49,16 @@ export function detectionToFaceState(det: Detection, timestamp: number): FaceSta
   const mouthWidth = Math.abs(pts[LM.MOUTH_RIGHT].x - pts[LM.MOUTH_LEFT].x);
   const widthRatio = mouthWidth / faceWidth;
 
+  // Sanity bounds: real mouths span ~20-60% of face width and corners
+  // rise at most ~15-20% of it. Values outside that mean the landmarks
+  // landed on noise (dark/grainy feeds) — never score those frames,
+  // or garbage geometry reads as a huge fake smile. Kept loose so
+  // degraded-but-real faces still score; the laugh *decision* also
+  // requires frame-to-frame score stability (see useLocalCamera).
+  if (widthRatio > 0.75 || widthRatio < 0.15 || avgRise > faceWidth * 0.2) {
+    return { faceDetected: true, smileScore: 0, mouthOpen: false, timestamp };
+  }
+
   // A full smile rises ~6% of face width and widens the ratio by ~0.15.
   const cornerScore = clamp(avgRise / (faceWidth * 0.06), 0, 1);
   const widthScore = clamp((widthRatio - 0.35) / 0.15, 0, 1);

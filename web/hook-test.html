@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /><title>useLocalCamera hook test</title></head>
+  <body>
+    <!-- Dev-only harness: mounts the real useLocalCamera hook so automated
+         tests can assert on actual laugh decisions (see tests/vision/). -->
+    <div id="root"></div>
+    <script type="module">
+      import { createElement as h } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { useLocalCamera } from '/src/hooks/useLocalCamera.ts';
+
+      const T = window.__hookTest = { laughs: [], status: null, error: null, frames: 0, faceFrames: 0 };
+
+      function Probe() {
+        const { status, error, faceState } = useLocalCamera({
+          onLaugh: (confidence) => T.laughs.push({ confidence, at: performance.now() }),
+        });
+        T.status = status;
+        T.error = error;
+        if (faceState) {
+          T.frames++;
+          if (faceState.faceDetected) T.faceFrames++;
+        }
+        return h('div', null, `status=${status} laughs=${T.laughs.length}`);
+      }
+
+      createRoot(document.getElementById('root')).render(h(Probe));
+    </script>
+  </body>
+</html>

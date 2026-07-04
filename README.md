@@ -15,11 +15,14 @@ Everything runs **locally in each player's browser** — no video is sent to the
 server for analysis.
 
 1. `useLocalCamera` opens the webcam into a hidden `<video>` element.
-2. Each frame passes through an adaptive low-light filter (`vision/enhance.ts`):
-   if even the brightest parts of the frame are dim, the brightness range is
-   auto-leveled to full contrast before the AI sees it. Detection works down
-   to roughly 10% of normal room lighting; well-lit frames are untouched. A
-   🌙 icon appears on your tile while the boost is active.
+2. Each frame passes through adaptive enhancement (`vision/enhance.ts`),
+   designed so detection works equally well regardless of lighting or skin
+   tone: scene-level auto-levels when the whole room is dark, face-metered
+   contrast stretching when the *face* is underexposed even though the scene
+   looks fine (darker skin tones, backlighting), temporal denoising for
+   grainy low-light webcams, and a higher-resolution detector fallback for
+   faces the standard pass can't find. Well-lit frames are untouched. A 🌙
+   icon appears on your tile while a boost is active.
 3. `visionLoop` analyzes frames with [face-api.js](https://github.com/justadudewhohacks/face-api.js)
    (TinyFaceDetector + 68-point landmarks, models in `web/public/weights/`).
 4. `smileDetector` scores each frame 0→1 from two signals: mouth-corner rise

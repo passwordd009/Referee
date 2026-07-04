@@ -12,13 +12,18 @@ import { SMILE_THRESHOLDS } from '../vision/smileDetector';
  * (so it exists before any React render), runs the face-api.js vision
  * loop on it, and calls `onLaugh` when the player laughs.
  *
- * A laugh is only reported after LAUGH_STREAK consecutive frames above
- * the smile threshold — a single glitchy frame never costs a life — and
- * at most once per EMIT_COOLDOWN_MS, so a long laugh doesn't spam the
- * server (which applies its own cooldown too).
+ * A laugh is only reported when the last LAUGH_STREAK face frames are
+ * all above the smile threshold AND agree with each other (small
+ * frame-to-frame spread). Real smiles hold a steady high score; noisy
+ * feeds — dim rooms, grainy webcams — produce erratic spikes that never
+ * stay consistent, so this blocks false penalties without making
+ * genuine laughs harder to detect. Emits at most once per
+ * EMIT_COOLDOWN_MS; the server applies its own cooldown too.
  */
 
 const LAUGH_STREAK = 3;
+/** Max spread between the streak's scores for them to count as one laugh. */
+const MAX_SCORE_SPREAD = 0.25;
 const EMIT_COOLDOWN_MS = 2_000;
 
 /** Live detection status, for showing the player that the AI is working. */
@@ -51,7 +56,7 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
     let cancelled = false;
 
     // Laugh confirmation state (see module comment).
-    let streak = 0;
+    const recentScores: number[] = [];
     let lastEmitAt = 0;
 
     // Latest frame result, synced to React state on a slow interval so
@@ -106,21 +111,26 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
         onEvent: (event) => {
           if (event.type === 'FACE_NOT_DETECTED') {
             latest = { faceDetected: false, smileScore: 0, lowLight: false };
-            streak = 0;
+            recentScores.length = 0;
             return;
           }
+          if (event.type !== 'SMILE_SCORE_UPDATE') return;
 
-          latest = { faceDetected: true, smileScore: event.faceState.smileScore, lowLight: false };
+          const score = event.faceState.smileScore;
+          latest = { faceDetected: true, smileScore: score, lowLight: false };
 
-          if (event.type === 'VIOLATION_DETECTED') {
-            streak += 1;
-            const now = Date.now();
-            if (streak >= LAUGH_STREAK && now - lastEmitAt >= EMIT_COOLDOWN_MS) {
-              lastEmitAt = now;
-              onLaughRef.current?.(event.faceState.smileScore);
-            }
-          } else if (event.faceState.smileScore < SMILE_THRESHOLDS.violation) {
-            streak = 0;
+          recentScores.push(score);
+          if (recentScores.length > LAUGH_STREAK) recentScores.shift();
+          if (recentScores.length < LAUGH_STREAK) return;
+
+          const min = Math.min(...recentScores);
+          const max = Math.max(...recentScores);
+          const isLaugh = min >= SMILE_THRESHOLDS.violation && max - min <= MAX_SCORE_SPREAD;
+
+          const now = Date.now();
+          if (isLaugh && now - lastEmitAt >= EMIT_COOLDOWN_MS) {
+            lastEmitAt = now;
+            onLaughRef.current?.(min);
           }
         },
       });

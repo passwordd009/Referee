@@ -4,7 +4,10 @@ Center-crops to 640x480, converts RGB -> YUV420 planar, repeats the
 frame N times. y4m is just a text header + FRAME markers + raw planes.
 
 Optional third arg: brightness factor (e.g. 0.25 simulates a dim room).
+Optional fourth arg: sensor noise sigma (e.g. 10) — fresh noise per frame,
+like a real webcam sensor in low light.
 """
+import random
 import sys
 from PIL import Image
 
@@ -33,7 +36,11 @@ def rgb_to_yuv420(img):
             v_plane[idx] = max(16, min(240, round(128 + v * 224 / 255)))
     return bytes(y_plane), bytes(u_plane), bytes(v_plane)
 
-def main(src, dst, brightness=1.0):
+def add_noise(plane, sigma):
+    rnd = random.gauss
+    return bytes(max(0, min(255, round(v + rnd(0, sigma)))) for v in plane)
+
+def main(src, dst, brightness=1.0, noise=0.0):
     img = Image.open(src).convert('RGB')
     if brightness != 1.0:
         img = img.point(lambda v: max(0, min(255, round(v * brightness))))
@@ -50,8 +57,16 @@ def main(src, dst, brightness=1.0):
         f.write(f'YUV4MPEG2 W{W} H{H} F10:1 Ip A1:1 C420\n'.encode())
         for _ in range(FRAMES):
             f.write(b'FRAME\n')
-            f.write(y); f.write(u); f.write(v)
-    print(f'{dst}: {FRAMES} frames, {W}x{H}')
+            if noise > 0:
+                f.write(add_noise(y, noise))  # fresh luma noise each frame
+            else:
+                f.write(y)
+            f.write(u); f.write(v)
+    print(f'{dst}: {FRAMES} frames, {W}x{H}, noise={noise}')
 
 if __name__ == '__main__':
-    main(sys.argv[1], sys.argv[2], float(sys.argv[3]) if len(sys.argv) > 3 else 1.0)
+    main(
+        sys.argv[1], sys.argv[2],
+        float(sys.argv[3]) if len(sys.argv) > 3 else 1.0,
+        float(sys.argv[4]) if len(sys.argv) > 4 else 0.0,
+    )
