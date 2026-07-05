@@ -5,6 +5,7 @@ import { HomePage }   from './pages/HomePage';
 import { LobbyPage }  from './pages/LobbyPage';
 import { GamePage }   from './pages/GamePage';
 import { ProfilePage } from './pages/ProfilePage';
+import { LeaderboardPage } from './pages/LeaderboardPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { supabaseConfigured } from './lib/supabase';
 
@@ -44,6 +45,7 @@ export function App() {
       <Route path="/signup"       element={<SignupPage />} />
       <Route path="/"             element={<Protected><HomePage /></Protected>} />
       <Route path="/profile"      element={<Protected><ProfilePage /></Protected>} />
+      <Route path="/leaderboard"  element={<Protected><LeaderboardPage /></Protected>} />
       <Route path="/lobby/:code"  element={<Protected><LobbyPage /></Protected>} />
       <Route path="/game/:code"   element={<Protected><GamePage /></Protected>} />
       <Route path="*"             element={<Navigate to="/" replace />} />

@@ -82,31 +82,32 @@ export class MatchEngine {
       }, delay);
       this.botTimers.set(roomCode, botPlay);
     } else {
-      // Tell only the active human player it's their turn
+      // Tell only the active human player it's their turn. The bot
+      // reacts when they actually play a bit (see playBit).
       const activeSocket = this.getSocketId(roomCode, activeId);
       if (activeSocket) {
         this.io.to(activeSocket).emit('your_turn', { durationMs: turnMs });
       }
-
-      // Bot might laugh during the human's turn (40% chance)
-      this.scheduleBotLaugh(roomCode, turnMs);
     }
 
     const timer = setTimeout(() => this.endTurn(roomCode), turnMs);
     this.turnTimers.set(roomCode, timer);
   }
 
-  private scheduleBotLaugh(roomCode: string, turnMs: number): void {
+  /**
+   * The bot laughs in reaction to a bit — a short beat after it's
+   * performed, 75% of the time. (It used to roll a 40% chance at turn
+   * start and could "laugh" before any bit was played, which mostly
+   * looked like it never laughed at all.)
+   */
+  private scheduleBotLaughAtBit(roomCode: string): void {
     const room = roomManager.get(roomCode);
     if (!room) return;
     const bot = Array.from(room.players.values()).find(p => p.isBot && !p.isEliminated);
     if (!bot) return;
-    if (Math.random() > 0.4) return;
+    if (Math.random() > 0.75) return;
 
-    const minDelay = 3_000;
-    const maxDelay = Math.max(minDelay + 1_000, turnMs - 3_000);
-    const delay = minDelay + Math.random() * (maxDelay - minDelay);
-
+    const delay = 1_500 + Math.random() * 3_500; // read the joke, then crack
     const timer = setTimeout(() => {
       this.processLaugh(roomCode, bot.userId, 0.75 + Math.random() * 0.25);
     }, delay);
@@ -128,6 +129,31 @@ export class MatchEngine {
       textContent: bit.textContent,
       title:       bit.title,
     });
+
+    // A human performed — give the bot a chance to break.
+    const performer = roomManager.get(roomCode)?.players.get(userId);
+    if (performer && !performer.isBot) {
+      this.scheduleBotLaughAtBit(roomCode);
+    }
+  }
+
+  /** A player voluntarily leaves the match: they forfeit and are out. */
+  leaveMatch(roomCode: string, userId: string): void {
+    const room = roomManager.get(roomCode);
+    if (!room || room.status !== 'in_game') return;
+
+    const player = room.players.get(userId);
+    if (!player || player.isEliminated) return;
+
+    player.isEliminated = true;
+    player.livesRemaining = 0;
+    this.io.to(roomCode).emit('player_eliminated', { playerId: userId, reason: 'left' });
+
+    if (this.activeTurns.get(roomCode) === userId) {
+      this.endTurn(roomCode);
+    } else if (this.activePlayers(roomCode).length <= 1) {
+      this.endMatch(roomCode);
+    }
   }
 
   submitGuess(roomCode: string, guesserId: string, targetId: string): void {

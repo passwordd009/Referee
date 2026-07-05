@@ -15,8 +15,36 @@ function getContext(): AudioContext | null {
   return ctx;
 }
 
+/* ── Volume setting (persisted) ──────────────────────────── */
+
+const VOLUME_KEY = 'lt_whistle_volume';
+
+function loadVolume(): number {
+  try {
+    const raw = localStorage.getItem(VOLUME_KEY);
+    if (raw === null) return 1;
+    const v = Number(raw);
+    return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+  } catch {
+    return 1;
+  }
+}
+
+let volume = loadVolume();
+
+/** Whistle volume, 0 (muted) to 1. */
+export function getWhistleVolume(): number {
+  return volume;
+}
+
+export function setWhistleVolume(v: number): void {
+  volume = Math.min(1, Math.max(0, v));
+  try { localStorage.setItem(VOLUME_KEY, String(volume)); } catch { /* private mode */ }
+}
+
 /** Blow the referee whistle. Safe to call repeatedly; failures are silent. */
 export function playWhistle(): void {
+  if (volume <= 0) return;
   const audio = getContext();
   if (!audio) return;
 
@@ -27,10 +55,11 @@ export function playWhistle(): void {
   const DURATION = 0.65;
 
   // Master volume envelope: sharp attack, brief sustain, quick fade.
+  const peak = 0.5 * volume;
   const master = audio.createGain();
   master.gain.setValueAtTime(0, now);
-  master.gain.linearRampToValueAtTime(0.5, now + 0.015);
-  master.gain.setValueAtTime(0.5, now + DURATION - 0.15);
+  master.gain.linearRampToValueAtTime(peak, now + 0.015);
+  master.gain.setValueAtTime(peak, now + DURATION - 0.15);
   master.gain.exponentialRampToValueAtTime(0.001, now + DURATION);
   master.connect(audio.destination);
 

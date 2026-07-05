@@ -1,10 +1,16 @@
+/// <reference types="vite/client" />
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useLobby } from '../hooks/useLobby';
 import type { GameMode } from '../hooks/useLobby';
+import { useLiveKit } from '../hooks/useLiveKit';
+import { useLocalPreview } from '../hooks/useLocalPreview';
 import { PlayerAvatar } from '../components/lobby/PlayerAvatar';
 import { BitsInventory } from '../components/lobby/BitsInventory';
+
+const SERVER_URL  = (import.meta.env.VITE_SERVER_URL  as string | undefined) ?? 'http://localhost:3001';
+const LIVEKIT_URL = (import.meta.env.VITE_LIVEKIT_URL as string | undefined) ?? '';
 
 const MODES: { id: GameMode; label: string; desc: string }[] = [
   { id: 'water_hold',      label: 'Water Hold',      desc: 'Hold water, don\'t spit it out. No guessing — survive each round of bits.' },
@@ -26,6 +32,15 @@ export function LobbyPage() {
     code.toUpperCase(),
     { id: userId, username },
   );
+
+  // Webcams in the ready-up section: your own local preview plus other
+  // players' LiveKit feeds (silently disabled if LiveKit isn't set up).
+  const localPreview = useLocalPreview();
+  const { remoteParticipants } = useLiveKit({
+    roomCode: code.toUpperCase(), userId, username,
+    serverUrl:  SERVER_URL,
+    livekitUrl: LIVEKIT_URL,
+  });
 
   const selfPlayer = room?.players.find(p => p.userId === userId);
   const isHost     = room?.createdBy === userId;
@@ -95,6 +110,8 @@ export function LobbyPage() {
                   player={p}
                   isHost={p.userId === room.createdBy}
                   isSelf={p.userId === userId}
+                  localStream={localPreview}
+                  remoteTrack={remoteParticipants.find(r => r.identity.endsWith(`__${p.userId}`))?.videoTrack ?? null}
                 />
               ))}
               {room && Array.from({ length: room.maxPlayers - room.players.length }).map((_, i) => (

@@ -56,4 +56,9 @@ export function registerMatchHandlers(io: Server, socket: Socket, engine: MatchE
     if (!room || room.status !== 'in_game') return;
     engine.endTurn(payload.roomCode);
   });
+
+  // Player leaves an in-progress match (forfeits)
+  socket.on('leave_match', (payload: { roomCode: string; userId: string }) => {
+    engine.leaveMatch(payload.roomCode, payload.userId);
+  });
 }

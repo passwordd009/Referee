@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { RemoteTrack } from 'livekit-client';
 import { useAuth } from '../auth/AuthContext';
@@ -7,7 +7,8 @@ import { useGameSocket, type Penalty, type GamePlayer } from '../hooks/useGameSo
 import { useLiveKit } from '../hooks/useLiveKit';
 import { useLocalCamera } from '../hooks/useLocalCamera';
 import { socket } from '../lib/socket';
-import { playWhistle } from '../lib/whistle';
+import { supabase } from '../lib/supabase';
+import { playWhistle, getWhistleVolume, setWhistleVolume } from '../lib/whistle';
 import { refereeLine } from '../lib/refereeLines';
 
 const SERVER_URL  = (import.meta.env.VITE_SERVER_URL  as string | undefined) ?? 'http://localhost:3001';
@@ -91,6 +92,128 @@ function WhistleBanner({ penalty, players }: { penalty: Penalty; players: GamePl
   );
 }
 
+const REPORT_REASONS = [
+  { id: 'harassment', label: 'Harassment' },
+  { id: 'inappropriate_behavior', label: 'Inappropriate behavior' },
+  { id: 'hate_speech', label: 'Hate speech' },
+  { id: 'cheating', label: 'Cheating' },
+  { id: 'spam', label: 'Spam' },
+  { id: 'other', label: 'Other' },
+];
+
+/** In-game menu: audio settings, report a player, leave the match. */
+function GameMenu({ players, selfId, onLeave, onClose }: {
+  players: GamePlayer[];
+  selfId: string;
+  onLeave: () => void;
+  onClose: () => void;
+}) {
+  const [volume, setVolume] = useState(() => Math.round(getWhistleVolume() * 100));
+  const [reportTarget, setReportTarget] = useState<GamePlayer | null>(null);
+  const [reportMsg, setReportMsg] = useState('');
+  const [confirmLeave, setConfirmLeave] = useState(false);
+
+  const others = players.filter(p => p.userId !== selfId && !p.isBot);
+
+  function changeVolume(v: number) {
+    setVolume(v);
+    setWhistleVolume(v / 100);
+  }
+
+  async function submitReport(reason: string) {
+    if (!reportTarget) return;
+    setReportMsg('Sending…');
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('Not signed in');
+
+      const res = await fetch(`${SERVER_URL}/api/players/${reportTarget.userId}/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 409) { setReportMsg('You already reported this player'); return; }
+      if (!res.ok) throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+      setReportMsg(`Report sent. Thanks for keeping the table safe.`);
+      setReportTarget(null);
+    } catch (err) {
+      setReportMsg(`Could not send report: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
+  }
+
+  return (
+    <div className="gp-menu-overlay" onClick={onClose}>
+      <div className="gp-menu" onClick={e => e.stopPropagation()}>
+        <div className="gp-menu__head">
+          <span className="gp-menu__title">MENU</span>
+          <button className="btn btn-ghost" onClick={onClose}>✕</button>
+        </div>
+
+        {/* Audio */}
+        <section className="gp-menu__section">
+          <p className="gp-menu__label">Whistle volume</p>
+          <div className="gp-menu__volume">
+            <input
+              type="range" min={0} max={100} value={volume}
+              onChange={e => changeVolume(Number(e.target.value))}
+            />
+            <span className="gp-menu__volume-value">{volume === 0 ? 'Muted' : `${volume}%`}</span>
+            <button className="btn btn-secondary" onClick={() => playWhistle()} disabled={volume === 0}>
+              Test
+            </button>
+          </div>
+        </section>
+
+        {/* Report */}
+        <section className="gp-menu__section">
+          <p className="gp-menu__label">Report a player</p>
+          {others.length === 0 && <p className="lobby-hint">No other players to report.</p>}
+          {others.length > 0 && !reportTarget && (
+            <div className="gp-menu__report-list">
+              {others.map(p => (
+                <button key={p.userId} className="gp-choice" onClick={() => { setReportTarget(p); setReportMsg(''); }}>
+                  {p.username}
+                </button>
+              ))}
+            </div>
+          )}
+          {reportTarget && (
+            <div className="gp-menu__report-list">
+              <p className="lobby-hint">Why are you reporting {reportTarget.username}?</p>
+              {REPORT_REASONS.map(r => (
+                <button key={r.id} className="gp-choice" onClick={() => void submitReport(r.id)}>
+                  {r.label}
+                </button>
+              ))}
+              <button className="btn btn-ghost" onClick={() => setReportTarget(null)}>Cancel</button>
+            </div>
+          )}
+          {reportMsg && <p className="gp-menu__report-msg">{reportMsg}</p>}
+        </section>
+
+        {/* Leave */}
+        <section className="gp-menu__section">
+          {!confirmLeave ? (
+            <button className="btn btn-danger" onClick={() => setConfirmLeave(true)}>
+              Leave match
+            </button>
+          ) : (
+            <div className="gp-menu__confirm">
+              <p className="lobby-hint">Leaving forfeits the match. Sure?</p>
+              <div className="gp-menu__confirm-row">
+                <button className="btn btn-danger" onClick={onLeave}>Yes, leave</button>
+                <button className="btn btn-secondary" onClick={() => setConfirmLeave(false)}>Stay</button>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
 export function GamePage() {
   const { code = '' } = useParams<{ code: string }>();
   const { user }      = useAuth();
@@ -120,6 +243,13 @@ export function GamePage() {
       socket.emit('laugh_detected', { roomCode, userId, confidence });
     },
   });
+
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  function leaveMatch() {
+    socket.emit('leave_match', { roomCode, userId });
+    navigate('/');
+  }
 
   const maxLives = Math.max(...players.map(p => p.livesRemaining), 3);
   const timerPct = turnDurationMs > 0 ? timeLeft / (turnDurationMs / 1000) : 0;
@@ -166,6 +296,17 @@ export function GamePage() {
     <div className="gp-page">
       {/* Whistle moment — sound + banner when anyone loses a life */}
       {penalty && <WhistleBanner penalty={penalty} players={players} />}
+
+      {/* In-game menu: audio, report, leave */}
+      <button className="gp-menu-btn" onClick={() => setMenuOpen(true)} title="Menu">☰</button>
+      {menuOpen && (
+        <GameMenu
+          players={players}
+          selfId={userId}
+          onLeave={leaveMatch}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
 
       {/* Player tiles — one per player with live video */}
       <div className="gp-tiles">
