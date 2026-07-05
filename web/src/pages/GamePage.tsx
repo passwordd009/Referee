@@ -42,6 +42,22 @@ function BitStage({ bit }: { bit: ActiveBit }) {
       </div>
     );
   }
+  if (bit.mediaType === 'video' && bit.mediaUrl) {
+    return (
+      <div className="gp-bit-card gp-bit-card--media">
+        {bit.title && <p className="gp-bit-title">{bit.title}</p>}
+        {/* Bits are capped at 10s at upload time — loop it for the turn */}
+        <video
+          className="gp-bit-image"
+          src={bit.mediaUrl}
+          autoPlay
+          loop
+          controls
+          playsInline
+        />
+      </div>
+    );
+  }
   if (bit.mediaType === 'youtube' && bit.mediaUrl) {
     const embed = youtubeEmbedUrl(bit.mediaUrl);
     if (embed) {
@@ -595,7 +611,7 @@ export function GamePage() {
                           >
                             {thumb
                               ? <img className="gp-choice__thumb" src={thumb} alt="" loading="lazy" />
-                              : <span className="gp-choice__icon">💬</span>}
+                              : <span className="gp-choice__icon">{bit.media_type === 'video' ? '🎬' : '💬'}</span>}
                             <span className="gp-choice__label">{label}</span>
                           </button>
                         );

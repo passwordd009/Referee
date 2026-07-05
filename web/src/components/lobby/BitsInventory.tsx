@@ -6,7 +6,7 @@ import { AddBitModal } from './AddBitModal';
 interface Bit {
   id: string;
   title: string | null;
-  media_type: 'text' | 'youtube' | 'image';
+  media_type: 'text' | 'youtube' | 'image' | 'video';
   media_url: string | null;
   text_content: string | null;
   created_at: string;
@@ -16,6 +16,7 @@ const TYPE_ICON: Record<string, string> = {
   text:    '💬',
   youtube: '▶',
   image:   '🖼',
+  video:   '🎬',
 };
 
 interface Props { userId: string }

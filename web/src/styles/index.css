@@ -2180,3 +2180,49 @@ html, body, #root {
 
 .lb-list--compact { width: 100%; margin-top: 0; }
 .lb-list--compact .lb-row { padding: 7px 10px; }
+
+/* ─── Bit upload drop zone ────────────────────────────── */
+
+.bit-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 130px;
+  margin-top: 6px;
+  padding: 14px;
+  border: 2px dashed rgba(255,255,255,0.2);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: center;
+}
+
+.bit-drop:hover {
+  border-color: rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.04);
+}
+
+.bit-drop--filled { border-style: solid; }
+
+.bit-drop__input { display: none; }
+
+.bit-drop__icon { font-size: 30px; }
+
+.bit-drop__hint {
+  font-size: 11px;
+  letter-spacing: 1px;
+  opacity: 0.55;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bit-drop__preview {
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: 8px;
+  object-fit: contain;
+}
