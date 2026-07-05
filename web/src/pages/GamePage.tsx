@@ -3,25 +3,69 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { RemoteTrack } from 'livekit-client';
 import { useAuth } from '../auth/AuthContext';
-import { useGameSocket, type Penalty, type GamePlayer } from '../hooks/useGameSocket';
+import { useGameSocket, type Penalty, type GamePlayer, type ActiveBit } from '../hooks/useGameSocket';
 import { useLiveKit } from '../hooks/useLiveKit';
 import { useLocalCamera } from '../hooks/useLocalCamera';
 import { socket } from '../lib/socket';
 import { supabase } from '../lib/supabase';
+import { bitThumbnail, youtubeEmbedUrl } from '../lib/bitMedia';
 import { playWhistle, getWhistleVolume, setWhistleVolume } from '../lib/whistle';
 import { refereeLine } from '../lib/refereeLines';
 
 const SERVER_URL  = (import.meta.env.VITE_SERVER_URL  as string | undefined) ?? 'http://localhost:3001';
 const LIVEKIT_URL = (import.meta.env.VITE_LIVEKIT_URL as string | undefined) ?? '';
 
-/** Fallback bits for players with an empty inventory. */
-const PLAYER_BITS = [
+/** Starter bits for players whose inventory is empty. */
+const FALLBACK_BITS: ActiveBit[] = [
   "I asked my dog what two minus two is. He said nothing.",
   "Why do cows wear bells? Because their horns don't work.",
   "I told my doctor I broke my arm in two places. He told me to stop going to those places.",
   "I used to hate facial hair, but then it grew on me.",
   "I'm on a seafood diet. I see food and I eat it.",
-];
+].map(textContent => ({ mediaType: 'text', textContent }));
+
+interface OwnBit {
+  id: string;
+  title: string | null;
+  media_type: string;
+  media_url: string | null;
+  text_content: string | null;
+}
+
+/** The bit currently on stage — text card, image, or YouTube embed. */
+function BitStage({ bit }: { bit: ActiveBit }) {
+  if (bit.mediaType === 'image' && bit.mediaUrl) {
+    return (
+      <div className="gp-bit-card gp-bit-card--media">
+        {bit.title && <p className="gp-bit-title">{bit.title}</p>}
+        <img className="gp-bit-image" src={bit.mediaUrl} alt={bit.title ?? 'bit'} />
+      </div>
+    );
+  }
+  if (bit.mediaType === 'youtube' && bit.mediaUrl) {
+    const embed = youtubeEmbedUrl(bit.mediaUrl);
+    if (embed) {
+      return (
+        <div className="gp-bit-card gp-bit-card--media">
+          {bit.title && <p className="gp-bit-title">{bit.title}</p>}
+          <iframe
+            className="gp-bit-video"
+            src={embed}
+            title={bit.title ?? 'bit'}
+            allow="autoplay; encrypted-media"
+            allowFullScreen
+          />
+        </div>
+      );
+    }
+  }
+  if (!bit.textContent) return null;
+  return (
+    <div className="gp-bit-card">
+      <p className="gp-bit-text">"{bit.textContent}"</p>
+    </div>
+  );
+}
 
 /** Row of hearts showing a player's remaining lives. */
 function Lives({ count, max }: { count: number; max: number }) {
@@ -214,6 +258,156 @@ function GameMenu({ players, selfId, onLeave, onClose }: {
   );
 }
 
+/** Compact global leaderboard slide for the end-of-match carousel. */
+function MiniLeaderboard({ selfId }: { selfId: string }) {
+  const [rows, setRows] = useState<{ id: string; username: string; level: number; total_wins: number; total_matches: number }[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void supabase
+      .from('profiles')
+      .select('id, username, level, total_wins, total_matches')
+      .order('total_wins', { ascending: false })
+      .limit(10)
+      .then(({ data }) => { if (!cancelled) setRows(data ?? []); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (rows === null) return <div className="auth-loading" style={{ padding: 24 }}><span className="auth-loading__spinner" /></div>;
+  if (rows.length === 0) return <p className="lobby-hint">No ranked players yet.</p>;
+
+  return (
+    <ol className="lb-list lb-list--compact">
+      {rows.map((row, i) => (
+        <li key={row.id} className={`lb-row ${row.id === selfId ? 'lb-row--self' : ''} ${i < 3 ? 'lb-row--top' : ''}`}>
+          <span className="lb-rank">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</span>
+          <span className="lb-name">{row.username}{row.id === selfId ? ' (you)' : ''}</span>
+          <span className="lb-level">LVL {row.level}</span>
+          <span className="lb-stat">{row.total_wins} W</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+interface SummaryPlayer {
+  userId: string;
+  laughsCaused: number;
+  laughsReceived: number;
+  isEliminated: boolean;
+}
+
+/**
+ * End-of-match carousel: result → match summary → global leaderboard.
+ * Swipe through with the arrows or the dots.
+ */
+function MatchEndCarousel({ players, result, selfId, onHome }: {
+  players: GamePlayer[];
+  result: { winnerId: string | null; stats: Record<string, unknown> };
+  selfId: string;
+  onHome: () => void;
+}) {
+  const [slide, setSlide] = useState(0);
+
+  const winner = players.find(p => p.userId === result.winnerId);
+  const iWon = result.winnerId === selfId;
+  const nameOf = (id: string | null | undefined) =>
+    players.find(p => p.userId === id)?.username ?? '—';
+
+  const summaryPlayers = ((result.stats.players as SummaryPlayer[]) ?? [])
+    .slice()
+    .sort((a, b) => b.laughsCaused - a.laughsCaused);
+
+  const slides = [
+    {
+      title: 'RESULT',
+      body: (
+        <div className="gp-slide-result">
+          <div className={`gp-over-result ${iWon ? 'result-win' : 'result-loss'}`}>
+            {iWon ? 'YOU WIN' : 'GAME OVER'}
+          </div>
+          <p className="gp-over-sub">{winner ? `${winner.username} survived` : 'No survivors'}</p>
+          <div className="gp-over-stats">
+            {(result.stats.funniest as string | null) && (
+              <div className="stat">
+                <span className="stat-label">Funniest</span>
+                <span className="stat-value">{nameOf(result.stats.funniest as string)}</span>
+              </div>
+            )}
+            <div className="stat">
+              <span className="stat-label">Laughs total</span>
+              <span className="stat-value">{result.stats.totalLaughs as number}</span>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'MATCH SUMMARY',
+      body: (
+        <div className="gp-summary">
+          {summaryPlayers.map(sp => (
+            <div key={sp.userId} className={`gp-summary-row ${sp.userId === result.winnerId ? 'gp-summary-row--winner' : ''}`}>
+              <span className="gp-summary-name">
+                {sp.userId === result.winnerId ? '👑 ' : ''}{nameOf(sp.userId)}{sp.userId === selfId ? ' (you)' : ''}
+              </span>
+              <span className="gp-summary-stat" title="Laughs caused">😂 {sp.laughsCaused}</span>
+              <span className="gp-summary-stat" title="Times caught laughing">💔 {sp.laughsReceived}</span>
+              <span className={`gp-summary-badge ${sp.isEliminated ? '' : 'gp-summary-badge--alive'}`}>
+                {sp.isEliminated ? 'OUT' : 'SURVIVED'}
+              </span>
+            </div>
+          ))}
+        </div>
+      ),
+    },
+    {
+      title: 'LEADERBOARD',
+      body: <MiniLeaderboard selfId={selfId} />,
+    },
+  ];
+
+  return (
+    <div className="gp-over-card gp-over-card--carousel">
+      <div className="gp-carousel">
+        <button
+          className="gp-carousel__arrow"
+          onClick={() => setSlide(s => Math.max(0, s - 1))}
+          disabled={slide === 0}
+          aria-label="Previous"
+        >‹</button>
+
+        <div className="gp-carousel__slide">
+          <p className="gp-carousel__title">{slides[slide].title}</p>
+          {slides[slide].body}
+        </div>
+
+        <button
+          className="gp-carousel__arrow"
+          onClick={() => setSlide(s => Math.min(slides.length - 1, s + 1))}
+          disabled={slide === slides.length - 1}
+          aria-label="Next"
+        >›</button>
+      </div>
+
+      <div className="gp-carousel__dots">
+        {slides.map((s, i) => (
+          <button
+            key={s.title}
+            className={`gp-carousel__dot ${i === slide ? 'gp-carousel__dot--on' : ''}`}
+            onClick={() => setSlide(i)}
+            aria-label={s.title}
+          />
+        ))}
+      </div>
+
+      <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={onHome}>
+        Home
+      </button>
+    </div>
+  );
+}
+
 export function GamePage() {
   const { code = '' } = useParams<{ code: string }>();
   const { user }      = useAuth();
@@ -246,6 +440,19 @@ export function GamePage() {
 
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Your uploaded bits — the real inventory you pick from on your turn.
+  const [ownBits, setOwnBits] = useState<OwnBit[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void supabase
+      .from('bits')
+      .select('id, title, media_type, media_url, text_content')
+      .eq('creator_id', userId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => { if (!cancelled) setOwnBits((data as OwnBit[]) ?? []); });
+    return () => { cancelled = true; };
+  }, [userId]);
+
   function leaveMatch() {
     socket.emit('leave_match', { roomCode, userId });
     navigate('/');
@@ -259,35 +466,14 @@ export function GamePage() {
   }
 
   if (phase === 'finished' && result) {
-    const winner = players.find(p => p.userId === result.winnerId);
-    const iWon   = result.winnerId === userId;
     return (
       <div className="gp-page gp-page--over">
-        <div className="gp-over-card">
-          <div className={`gp-over-result ${iWon ? 'result-win' : 'result-loss'}`}>
-            {iWon ? 'YOU WIN' : 'GAME OVER'}
-          </div>
-          <p className="gp-over-sub">
-            {winner ? `${winner.username} survived` : 'No survivors'}
-          </p>
-          <div className="gp-over-stats">
-            {(result.stats.funniest as string | null) && (
-              <div className="stat">
-                <span className="stat-label">Funniest</span>
-                <span className="stat-value">
-                  {players.find(p => p.userId === result.stats.funniest)?.username ?? '—'}
-                </span>
-              </div>
-            )}
-            <div className="stat">
-              <span className="stat-label">Laughs total</span>
-              <span className="stat-value">{result.stats.totalLaughs as number}</span>
-            </div>
-          </div>
-          <button className="btn btn-primary" style={{ marginTop: 24 }} onClick={() => navigate('/')}>
-            Home
-          </button>
-        </div>
+        <MatchEndCarousel
+          players={players}
+          result={result}
+          selfId={userId}
+          onHome={() => navigate('/')}
+        />
       </div>
     );
   }
@@ -384,21 +570,41 @@ export function GamePage() {
               {myTurn ? '— YOUR TURN —' : '— Someone is performing… —'}
             </p>
 
-            {activeBit?.textContent && (
-              <div className="gp-bit-card">
-                <p className="gp-bit-text">"{activeBit.textContent}"</p>
-              </div>
-            )}
+            {activeBit && <BitStage bit={activeBit} />}
 
             {myTurn && !activeBit && (
               <div className="gp-choices">
-                <p className="gp-choices__label">Pick a bit to perform</p>
+                <p className="gp-choices__label">
+                  {ownBits.length > 0 ? 'Pick one of your bits' : 'Pick a bit to perform'}
+                </p>
                 <div className="gp-choices__list">
-                  {PLAYER_BITS.map((bit, i) => (
-                    <button key={i} className="gp-choice" onClick={() => playBit(bit)}>
-                      {bit}
-                    </button>
-                  ))}
+                  {ownBits.length > 0
+                    ? ownBits.map(bit => {
+                        const thumb = bitThumbnail(bit.media_type, bit.media_url);
+                        const label = bit.title ?? bit.text_content ?? bit.media_url ?? 'Untitled bit';
+                        return (
+                          <button
+                            key={bit.id}
+                            className="gp-choice gp-choice--bit"
+                            onClick={() => playBit({
+                              mediaType:   bit.media_type,
+                              mediaUrl:    bit.media_url ?? undefined,
+                              textContent: bit.text_content ?? undefined,
+                              title:       bit.title ?? undefined,
+                            })}
+                          >
+                            {thumb
+                              ? <img className="gp-choice__thumb" src={thumb} alt="" loading="lazy" />
+                              : <span className="gp-choice__icon">💬</span>}
+                            <span className="gp-choice__label">{label}</span>
+                          </button>
+                        );
+                      })
+                    : FALLBACK_BITS.map((bit, i) => (
+                        <button key={i} className="gp-choice" onClick={() => playBit(bit)}>
+                          {bit.textContent}
+                        </button>
+                      ))}
                 </div>
                 <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={skipTurn}>
                   Skip turn

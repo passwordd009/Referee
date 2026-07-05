@@ -31,13 +31,21 @@ export interface Penalty {
   key: number;
 }
 
+/** The bit currently being performed (text, image, or YouTube). */
+export interface ActiveBit {
+  mediaType: string;
+  mediaUrl?: string;
+  textContent?: string;
+  title?: string;
+}
+
 type Phase = 'loading' | 'turn_active' | 'turn_reveal' | 'finished';
 
 interface State {
   phase: Phase;
   players: GamePlayer[];
   myTurn: boolean;
-  activeBit: { textContent?: string } | null;
+  activeBit: ActiveBit | null;
   revealedPlayer: { playerId: string; username: string } | null;
   timeLeft: number;
   turnDurationMs: number;
@@ -50,7 +58,7 @@ type Action =
   | { type: 'INIT'; players: GamePlayer[] }
   | { type: 'TURN_START'; durationMs: number }
   | { type: 'MY_TURN' }
-  | { type: 'BIT_PLAYED'; textContent?: string }
+  | { type: 'BIT_PLAYED'; bit: ActiveBit }
   | { type: 'TURN_REVEAL'; playerId: string; username: string }
   | { type: 'LIFE_REMOVED'; playerId: string; livesRemaining: number; reason: PenaltyReason }
   | { type: 'PLAYER_ELIMINATED'; playerId: string }
@@ -80,7 +88,7 @@ function reducer(state: State, action: Action): State {
       return { ...state, myTurn: true };
 
     case 'BIT_PLAYED':
-      return { ...state, activeBit: { textContent: action.textContent } };
+      return { ...state, activeBit: action.bit };
 
     case 'TURN_REVEAL':
       return {
@@ -166,8 +174,8 @@ export function useGameSocket(roomCode: string, userId: string) {
       dispatch({ type: 'MY_TURN' });
     });
 
-    socket.on('bit_played', ({ textContent }: { textContent?: string }) => {
-      dispatch({ type: 'BIT_PLAYED', textContent });
+    socket.on('bit_played', (bit: ActiveBit) => {
+      dispatch({ type: 'BIT_PLAYED', bit });
     });
 
     socket.on('turn_revealed', ({ playerId, username }: { playerId: string; username: string }) => {
@@ -206,8 +214,8 @@ export function useGameSocket(roomCode: string, userId: string) {
   }, [roomCode]);
 
   /** Active player: perform a bit for the room. */
-  const playBit = useCallback((textContent: string) => {
-    socket.emit('play_bit', { roomCode, userId, mediaType: 'text', textContent });
+  const playBit = useCallback((bit: ActiveBit) => {
+    socket.emit('play_bit', { roomCode, userId, ...bit });
   }, [roomCode, userId]);
 
   /** Active player: pass without performing. */

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
+import { bitThumbnail } from '../../lib/bitMedia';
 import { AddBitModal } from './AddBitModal';
 
 interface Bit {
@@ -63,9 +64,13 @@ export function BitsInventory({ userId }: Props) {
         </div>
       ) : (
         <ul className="bit-list">
-          {bits.map(bit => (
+          {bits.map(bit => {
+            const thumb = bitThumbnail(bit.media_type, bit.media_url);
+            return (
             <li key={bit.id} className="bit-card">
-              <span className="bit-card__icon">{TYPE_ICON[bit.media_type]}</span>
+              {thumb
+                ? <img className="bit-card__thumb" src={thumb} alt={bit.title ?? 'bit'} loading="lazy" />
+                : <span className="bit-card__icon">{TYPE_ICON[bit.media_type]}</span>}
               <div className="bit-card__body">
                 <span className="bit-card__title">
                   {bit.title ?? (bit.text_content ? bit.text_content.slice(0, 60) + (bit.text_content.length > 60 ? '…' : '') : bit.media_url)}
@@ -81,7 +86,8 @@ export function BitsInventory({ userId }: Props) {
                 ✕
               </button>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 
