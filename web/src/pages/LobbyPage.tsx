@@ -13,9 +13,9 @@ const SERVER_URL  = (import.meta.env.VITE_SERVER_URL  as string | undefined) ?? 
 const LIVEKIT_URL = (import.meta.env.VITE_LIVEKIT_URL as string | undefined) ?? '';
 
 const MODES: { id: GameMode; label: string; desc: string }[] = [
-  { id: 'water_hold',      label: 'Water Hold',      desc: 'Hold water, don\'t spit it out. No guessing — survive each round of bits.' },
-  { id: 'guess_the_biter', label: 'Guess the Biter', desc: 'Guess who played their bit. Laugh or get caught — lose a life. Your turn? You\'re invincible.' },
-  { id: 'casual',          label: 'Casual',           desc: 'Laugh and you lose. Lightweight fun leaning on impressions and bits as backup.' },
+  { id: 'casual',          label: 'Classic',         desc: 'The Spotlight rotates. Make everyone else laugh — laugh yourself and lose a life. Fast turns, constant action.' },
+  { id: 'water_hold',      label: 'Water Hold',      desc: 'Fill your mouth with water. Open it — spit, swallow, laugh — and you spill. Refill breaks between turns.' },
+  { id: 'guess_the_biter', label: 'Guess the Biter', desc: 'A secret Biter performs each round. Watch reactions, then vote. Catch them and they pay — guess wrong and you do.' },
 ];
 
 export function LobbyPage() {

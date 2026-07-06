@@ -24,6 +24,13 @@ const LINES = {
     "{name} pointed the wrong finger. Penalty!",
     'Not even close, {name}. Lose a life.',
   ],
+  // Water Hold: the water didn't survive.
+  spilled: [
+    '{name} spat it out! Water everywhere!',
+    'The dam broke! {name} loses a life.',
+    "{name} couldn't hold it. Grab a towel.",
+    'Splash! {name} is out a life.',
+  ],
 } as const;
 
 export type PenaltyReason = keyof typeof LINES;

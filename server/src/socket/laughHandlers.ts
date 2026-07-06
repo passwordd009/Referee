@@ -12,7 +12,9 @@ export function registerLaughHandlers(_io: Server, socket: Socket, engine: Match
     roomCode: string;
     userId: string;
     confidence: number;
+    /** 'water' = broke the Water Hold seal (mouth opened). */
+    violation?: 'laugh' | 'water';
   }) => {
-    engine.processLaugh(payload.roomCode, payload.userId, payload.confidence);
+    engine.processLaugh(payload.roomCode, payload.userId, payload.confidence, payload.violation ?? 'laugh');
   });
 }

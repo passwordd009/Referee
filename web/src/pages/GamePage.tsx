@@ -274,6 +274,19 @@ function GameMenu({ players, selfId, onLeave, onClose }: {
   );
 }
 
+/** Big animated 3-2-1 before a match (or water round) starts. */
+function CountdownDigits({ seconds }: { seconds: number }) {
+  const [n, setN] = useState(seconds);
+
+  useEffect(() => {
+    setN(seconds);
+    const iv = setInterval(() => setN(v => Math.max(1, v - 1)), 1000);
+    return () => clearInterval(iv);
+  }, [seconds]);
+
+  return <span key={n} className="countdown-digit">{n}</span>;
+}
+
 /** Compact global leaderboard slide for the end-of-match carousel. */
 function MiniLeaderboard({ selfId }: { selfId: string }) {
   const [rows, setRows] = useState<{ id: string; username: string; level: number; total_wins: number; total_matches: number }[] | null>(null);
@@ -317,12 +330,13 @@ interface SummaryPlayer {
  * End-of-match carousel: result → match summary → global leaderboard.
  * Swipe through with the arrows or the dots.
  */
-function MatchEndCarousel({ players, result, rewards, selfId, onHome }: {
+function MatchEndCarousel({ players, result, rewards, selfId, onHome, onRematch }: {
   players: GamePlayer[];
   result: { winnerId: string | null; stats: Record<string, unknown> };
   rewards: MatchReward[] | null;
   selfId: string;
   onHome: () => void;
+  onRematch: () => void;
 }) {
   const [slide, setSlide] = useState(0);
 
@@ -429,9 +443,14 @@ function MatchEndCarousel({ players, result, rewards, selfId, onHome }: {
         ))}
       </div>
 
-      <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={onHome}>
-        Home
-      </button>
+      <div className="gp-over-actions">
+        <button className="btn btn-primary" onClick={onRematch}>
+          ⟳ Rematch
+        </button>
+        <button className="btn btn-secondary" onClick={onHome}>
+          Home
+        </button>
+      </div>
     </div>
   );
 }
@@ -446,8 +465,10 @@ export function GamePage() {
   const roomCode = code.toUpperCase();
 
   const {
-    phase, players, myTurn, activeBit, revealedPlayer,
-    timeLeft, turnDurationMs, result, rewards, penalty, playBit, skipTurn,
+    phase, gameMode, players, myTurn, spotlightId, activeBit, endedTurn,
+    countdownSecs, refillSecs, votesIn, votesReveal, myVoteTarget,
+    timeLeft, turnDurationMs, result, rewards, penalty,
+    playBit, skipTurn, submitVote, requestRematch,
   } = useGameSocket(roomCode, userId);
 
   // Player-to-player video (silently disabled when LiveKit isn't configured).
@@ -457,14 +478,20 @@ export function GamePage() {
     livekitUrl: LIVEKIT_URL,
   });
 
-  // Local AI laugh detection: face-api.js watches the webcam, and a
-  // sustained smile above the threshold is reported to the server.
-  // The server applies its own cooldown and active-player immunity.
+  // Local AI detection: laughs in every mode; in Water Hold an open
+  // mouth (spit/swallow) is a violation too. The server applies its
+  // own cooldown and active-player immunity.
   const { stream: localStream, status: cameraStatus, error: cameraError, faceState } = useLocalCamera({
-    onLaugh: (confidence) => {
-      socket.emit('laugh_detected', { roomCode, userId, confidence });
+    watchMode: gameMode === 'water_hold' ? 'water' : 'laugh',
+    onLaugh: (confidence, kind) => {
+      socket.emit('laugh_detected', { roomCode, userId, confidence, violation: kind });
     },
   });
+
+  // Whistle marks the end of every spotlight turn (classic / water).
+  useEffect(() => {
+    if (phase === 'turn_break') playWhistle();
+  }, [phase]);
 
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -488,6 +515,8 @@ export function GamePage() {
 
   const maxLives = Math.max(...players.map(p => p.livesRemaining), 3);
   const timerPct = turnDurationMs > 0 ? timeLeft / (turnDurationMs / 1000) : 0;
+  // Guess mode signals your turn privately; other modes via the spotlight.
+  const isMyTurn = myTurn || spotlightId === userId;
 
   if (phase === 'loading') {
     return <div className="auth-loading"><span className="auth-loading__spinner" /></div>;
@@ -502,6 +531,7 @@ export function GamePage() {
           rewards={rewards}
           selfId={userId}
           onHome={() => navigate('/')}
+          onRematch={requestRematch}
         />
       </div>
     );
@@ -538,6 +568,8 @@ export function GamePage() {
                 p.isEliminated ? 'gp-tile--eliminated' : '',
                 penalty?.playerId === p.userId ? 'gp-tile--laugh' : '',
                 isSelf ? 'gp-tile--self' : '',
+                // White glowing Spotlight — everyone knows whose turn it is
+                spotlightId === p.userId && phase === 'turn_active' ? 'gp-tile--spotlight' : '',
               ].join(' ')}
             >
               <div className="gp-tile__screen">
@@ -593,15 +625,91 @@ export function GamePage() {
 
       {/* Main content */}
       <div className="gp-main">
+        {phase === 'countdown' && (
+          <div className="gp-countdown">
+            <CountdownDigits seconds={countdownSecs} />
+            <p className="gp-status">
+              {gameMode === 'water_hold' ? 'KEEP IT IN…' :
+               gameMode === 'guess_the_biter' ? 'WATCH EVERYONE…' : 'STRAIGHT FACES…'}
+            </p>
+          </div>
+        )}
+
+        {phase === 'refill' && (
+          <div className="gp-refill">
+            <span className="gp-refill__icon">💧</span>
+            <p className="gp-refill__title">FILL YOUR MOUTH WITH WATER</p>
+            <p className="gp-status">Refill break — {refillSecs}s. Don't swallow. Don't smile.</p>
+          </div>
+        )}
+
+        {phase === 'turn_break' && endedTurn && (
+          <div className="gp-reveal">
+            <p className="gp-reveal__label">🔴 Turn over</p>
+            <p className="gp-reveal__name">{endedTurn.username}</p>
+            <p className="gp-status">
+              {gameMode === 'water_hold' ? 'Quick refill, next spotlight…' : 'Next spotlight…'}
+            </p>
+          </div>
+        )}
+
+        {phase === 'voting' && (
+          <div className="gp-voting">
+            <p className="gp-status">— WHO WAS THE BITER? —</p>
+            {myVoteTarget ? (
+              <p className="lobby-hint">
+                Vote locked in. {votesIn} vote{votesIn === 1 ? '' : 's'} cast…
+              </p>
+            ) : (
+              <div className="gp-voting__options">
+                {players
+                  .filter(p => !p.isEliminated && p.userId !== userId)
+                  .map(p => (
+                    <button key={p.userId} className="gp-choice" onClick={() => submitVote(p.userId)}>
+                      {p.username}{p.isBot ? ' 🤖' : ''}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {phase === 'votes_reveal' && votesReveal && (
+          <div className="gp-reveal">
+            <p className="gp-reveal__label">The Biter was…</p>
+            <p className="gp-reveal__name">{votesReveal.username ?? '???'}</p>
+            <div className="gp-votes">
+              {votesReveal.votes.map(v => {
+                const voter = players.find(p => p.userId === v.voterId);
+                const target = players.find(p => p.userId === v.targetId);
+                const correct = v.targetId === votesReveal.biterId && v.voterId !== votesReveal.biterId;
+                return (
+                  <div key={v.voterId} className={`gp-votes__row ${correct ? 'gp-votes__row--correct' : ''}`}>
+                    <span>{voter?.username ?? '?'}</span>
+                    <span className="gp-votes__arrow">→</span>
+                    <span>{target?.username ?? '?'}</span>
+                    <span>{v.voterId === votesReveal.biterId ? '🎭' : correct ? '✔' : '✘'}</span>
+                  </div>
+                );
+              })}
+              {votesReveal.votes.length === 0 && <p className="lobby-hint">Nobody voted. Cowards.</p>}
+            </div>
+          </div>
+        )}
+
         {phase === 'turn_active' && (
           <>
             <p className="gp-status">
-              {myTurn ? '— YOUR TURN —' : '— Someone is performing… —'}
+              {myTurn && gameMode === 'guess_the_biter' ? '— YOU ARE THE BITER. STAY COOL. —' :
+               spotlightId === userId ? '— YOUR SPOTLIGHT. MAKE THEM BREAK. —' :
+               gameMode === 'guess_the_biter' ? '— Someone is performing… watch closely —' :
+               spotlightId ? `— ${players.find(p => p.userId === spotlightId)?.username ?? 'Someone'} has the spotlight —` :
+               '— Someone is performing… —'}
             </p>
 
             {activeBit && <BitStage bit={activeBit} />}
 
-            {myTurn && !activeBit && (
+            {isMyTurn && !activeBit && (
               <div className="gp-choices">
                 <p className="gp-choices__label">
                   {ownBits.length > 0 ? 'Pick one of your bits' : 'Pick a bit to perform'}
@@ -643,16 +751,10 @@ export function GamePage() {
           </>
         )}
 
-        {phase === 'turn_reveal' && revealedPlayer && (
-          <div className="gp-reveal">
-            <p className="gp-reveal__label">It was…</p>
-            <p className="gp-reveal__name">{revealedPlayer.username}</p>
-          </div>
-        )}
       </div>
 
-      {/* Turn timer */}
-      {phase === 'turn_active' && (
+      {/* Turn / voting timer */}
+      {(phase === 'turn_active' || phase === 'voting') && (
         <div className="gp-timer">
           <div className="gp-timer__bar">
             <div className="gp-timer__fill" style={{ width: `${Math.max(0, timerPct) * 100}%` }} />

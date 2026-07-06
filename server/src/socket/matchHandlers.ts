@@ -41,13 +41,18 @@ export function registerMatchHandlers(io: Server, socket: Socket, engine: MatchE
     });
   });
 
-  // Player guesses who played the bit
-  socket.on('submit_guess', (payload: {
+  // Guess the Biter: cast a vote during the voting stage
+  socket.on('submit_vote', (payload: {
     roomCode: string;
-    guesserId: string;
+    voterId: string;
     targetId: string;
   }) => {
-    engine.submitGuess(payload.roomCode, payload.guesserId, payload.targetId);
+    engine.submitVote(payload.roomCode, payload.voterId, payload.targetId);
+  });
+
+  // Instant rematch from the results screen
+  socket.on('rematch', (payload: { roomCode: string }) => {
+    engine.rematch(payload.roomCode);
   });
 
   // Active player skips their turn

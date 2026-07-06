@@ -25,6 +25,10 @@ const LAUGH_STREAK = 3;
 /** Max spread between the streak's scores for them to count as one laugh. */
 const MAX_SCORE_SPREAD = 0.25;
 const EMIT_COOLDOWN_MS = 2_000;
+/** Water Hold: consecutive open-mouth frames that count as spilling. */
+const MOUTH_OPEN_STREAK = 3;
+
+export type ViolationKind = 'laugh' | 'water';
 
 /** Live detection status, for showing the player that the AI is working. */
 export interface LiveFaceState {
@@ -38,10 +42,15 @@ export interface LiveFaceState {
 export type CameraStatus = 'starting' | 'active' | 'error';
 
 interface UseLocalCameraOptions {
-  onLaugh?: (confidence: number) => void;
+  onLaugh?: (confidence: number, kind: ViolationKind) => void;
+  /**
+   * 'water' (Water Hold) also treats a sustained open mouth as a
+   * violation — you spat, swallowed, or broke the seal.
+   */
+  watchMode?: 'laugh' | 'water';
 }
 
-export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
+export function useLocalCamera({ onLaugh, watchMode = 'laugh' }: UseLocalCameraOptions = {}) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [status, setStatus] = useState<CameraStatus>('starting');
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +58,9 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
 
   const onLaughRef = useRef(onLaugh);
   onLaughRef.current = onLaugh;
+  // Ref, not closure: the game mode arrives from the server after mount.
+  const watchModeRef = useRef(watchMode);
+  watchModeRef.current = watchMode;
 
   useEffect(() => {
     let activeStream: MediaStream | null = null;
@@ -57,6 +69,7 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
 
     // Laugh confirmation state (see module comment).
     const recentScores: number[] = [];
+    let mouthOpenStreak = 0;
     let lastEmitAt = 0;
 
     // Latest frame result, synced to React state on a slow interval so
@@ -112,12 +125,24 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
           if (event.type === 'FACE_NOT_DETECTED') {
             latest = { faceDetected: false, smileScore: 0, lowLight: false };
             recentScores.length = 0;
+            mouthOpenStreak = 0;
             return;
           }
           if (event.type !== 'SMILE_SCORE_UPDATE') return;
 
           const score = event.faceState.smileScore;
           latest = { faceDetected: true, smileScore: score, lowLight: false };
+          const now = Date.now();
+
+          // Water Hold: a sustained open mouth is a violation on its own.
+          if (watchModeRef.current === 'water') {
+            mouthOpenStreak = event.faceState.mouthOpen ? mouthOpenStreak + 1 : 0;
+            if (mouthOpenStreak >= MOUTH_OPEN_STREAK && now - lastEmitAt >= EMIT_COOLDOWN_MS) {
+              lastEmitAt = now;
+              onLaughRef.current?.(1, 'water');
+              return;
+            }
+          }
 
           recentScores.push(score);
           if (recentScores.length > LAUGH_STREAK) recentScores.shift();
@@ -127,10 +152,9 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
           const max = Math.max(...recentScores);
           const isLaugh = min >= SMILE_THRESHOLDS.violation && max - min <= MAX_SCORE_SPREAD;
 
-          const now = Date.now();
           if (isLaugh && now - lastEmitAt >= EMIT_COOLDOWN_MS) {
             lastEmitAt = now;
-            onLaughRef.current?.(min);
+            onLaughRef.current?.(min, 'laugh');
           }
         },
       });
