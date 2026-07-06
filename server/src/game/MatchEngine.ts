@@ -27,27 +27,11 @@ const REFILL_BETWEEN_MS = 4_000;  // quick top-up between turns
 const VOTING_MS         = 12_000;
 const VOTES_REVEAL_MS   = 3_500;
 
-const BOT_BITS = [
-  "I asked my dog what two minus two is. He said nothing.",
-  "Why do cows wear bells? Because their horns don't work.",
-  "I told my doctor I broke my arm in two places. He told me to stop going to those places.",
-  "I used to hate facial hair, but then it grew on me.",
-  "I'm on a seafood diet. I see food and I eat it.",
-  "Why don't scientists trust atoms? Because they make up everything.",
-  "I would tell you a construction joke but I'm still working on it.",
-  "The librarian asked if I needed help finding anything. I said, 'Just my will to live.'",
-  "My wife told me to stop acting like a flamingo. I had to put my foot down.",
-  "I told my boss I needed a raise because three companies were after me. He asked which ones. I said, 'The gas, electric, and water company.'",
-  "I'm writing a book on reverse psychology. Please don't buy it.",
-  "A skeleton walks into a bar and says, 'I'll have a beer and a mop.'",
-];
-
 type ViolationKind = 'laugh' | 'water';
 
 export class MatchEngine {
   private io!: Server;
   private phaseTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  private botTimers   = new Map<string, ReturnType<typeof setTimeout>>();
   private laughProcs  = new Map<string, LaughProcessor>();
   private activeTurns = new Map<string, string>();
   // Guess mode: votes for the current voting stage (voterId → targetId).
@@ -143,49 +127,19 @@ export class MatchEngine {
 
     const activeId = room.turnOrder[room.currentTurnIndex];
     this.activeTurns.set(roomCode, activeId);
-    const activePlayer = room.players.get(activeId);
     const turnMs = (room.turnTimeSecs ?? 20) * 1000;
 
     if (this.mode(roomCode) === 'guess_the_biter') {
       // Secret Biter: the room only learns someone is performing.
       this.io.to(roomCode).emit('anonymous_turn_started', { durationMs: turnMs });
-      if (!activePlayer?.isBot) {
-        const activeSocket = this.getSocketId(roomCode, activeId);
-        if (activeSocket) this.io.to(activeSocket).emit('your_turn', { durationMs: turnMs });
-      }
+      const activeSocket = this.getSocketId(roomCode, activeId);
+      if (activeSocket) this.io.to(activeSocket).emit('your_turn', { durationMs: turnMs });
     } else {
       // Classic / Water Hold: public spotlight on the active player.
       this.io.to(roomCode).emit('turn_started', { activePlayerId: activeId, durationMs: turnMs });
     }
 
-    if (activePlayer?.isBot) {
-      const delay = 1500 + Math.random() * 1500;
-      const botPlay = setTimeout(() => {
-        const bit = BOT_BITS[Math.floor(Math.random() * BOT_BITS.length)];
-        this.playBit(roomCode, activeId, { mediaType: 'text', textContent: bit });
-      }, delay);
-      this.botTimers.set(roomCode, botPlay);
-    }
-
     this.setPhaseTimer(roomCode, turnMs, () => this.endTurn(roomCode));
-  }
-
-  /**
-   * The bot laughs in reaction to a bit — a short beat after it's
-   * performed, 75% of the time.
-   */
-  private scheduleBotLaughAtBit(roomCode: string): void {
-    const room = roomManager.get(roomCode);
-    if (!room) return;
-    const bot = Array.from(room.players.values()).find(p => p.isBot && !p.isEliminated);
-    if (!bot) return;
-    if (Math.random() > 0.75) return;
-
-    const delay = 1_500 + Math.random() * 3_500; // read the joke, then crack
-    const timer = setTimeout(() => {
-      this.processLaugh(roomCode, bot.userId, 0.75 + Math.random() * 0.25);
-    }, delay);
-    this.botTimers.set(roomCode, timer);
   }
 
   playBit(roomCode: string, userId: string, bit: {
@@ -203,11 +157,6 @@ export class MatchEngine {
       textContent: bit.textContent,
       title:       bit.title,
     });
-
-    const performer = roomManager.get(roomCode)?.players.get(userId);
-    if (performer && !performer.isBot) {
-      this.scheduleBotLaughAtBit(roomCode);
-    }
   }
 
   /** A player voluntarily leaves the match: they forfeit and are out. */
@@ -231,8 +180,6 @@ export class MatchEngine {
 
   endTurn(roomCode: string): void {
     clearTimeout(this.phaseTimers.get(roomCode));
-    clearTimeout(this.botTimers.get(roomCode));
-    this.botTimers.delete(roomCode);
 
     const room = roomManager.get(roomCode);
     if (!room || room.status !== 'in_game') return;
@@ -272,19 +219,6 @@ export class MatchEngine {
     this.votingOpen.add(roomCode);
     this.io.to(roomCode).emit('voting_started', { durationMs: VOTING_MS });
 
-    // The bot votes too (badly) — a random other living player.
-    const bot = Array.from(room.players.values()).find(p => p.isBot && !p.isEliminated);
-    if (bot) {
-      const options = this.activePlayers(roomCode).filter(id => id !== bot.userId);
-      if (options.length > 0) {
-        const pick = options[Math.floor(Math.random() * options.length)];
-        const timer = setTimeout(() => {
-          this.submitVote(roomCode, bot.userId, pick);
-        }, 2_000 + Math.random() * 3_000);
-        this.botTimers.set(roomCode, timer);
-      }
-    }
-
     this.setPhaseTimer(roomCode, VOTING_MS, () => this.finishVoting(roomCode));
   }
 
@@ -314,7 +248,6 @@ export class MatchEngine {
     if (!this.votingOpen.has(roomCode)) return;
     this.votingOpen.delete(roomCode);
     clearTimeout(this.phaseTimers.get(roomCode));
-    clearTimeout(this.botTimers.get(roomCode));
 
     const room = roomManager.get(roomCode);
     const biterId = this.activeTurns.get(roomCode);
@@ -399,8 +332,6 @@ export class MatchEngine {
   private endMatch(roomCode: string): void {
     clearTimeout(this.phaseTimers.get(roomCode));
     this.phaseTimers.delete(roomCode);
-    clearTimeout(this.botTimers.get(roomCode));
-    this.botTimers.delete(roomCode);
     this.votingOpen.delete(roomCode);
     this.votes.delete(roomCode);
 

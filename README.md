@@ -115,8 +115,9 @@ cp server/.env.example server/.env # or skip — see below
 npm run dev                        # starts web (5173) + server (3001)
 ```
 
-Open http://localhost:5173, create an account, create a room, ready up, and
-start the match. A bot player joins every room so you can play solo.
+Open http://localhost:5173, create an account, create a room, and share the
+room code. Matches need at least 2 players — grab a friend (or a second
+browser profile) and ready up.
 
 ### What's optional
 

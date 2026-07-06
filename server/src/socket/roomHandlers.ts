@@ -2,8 +2,6 @@ import type { Server, Socket } from 'socket.io';
 import { roomManager } from '../game/RoomManager.js';
 import type { RoomType, GameMode } from '../game/RoomManager.js';
 
-const BOT_ID = '__bot__';
-
 export function registerRoomHandlers(io: Server, socket: Socket): void {
 
   socket.on('create_room', (payload: {
@@ -35,19 +33,6 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
       laughsReceived: 0,
       isEliminated:   false,
       isReady:        false,
-    });
-
-    // Add bot player
-    roomManager.addPlayer(room.roomCode, {
-      userId:         BOT_ID,
-      username:       'Bot',
-      socketId:       `__bot__${room.roomCode}`,
-      livesRemaining: room.livesCount,
-      laughsCaused:   0,
-      laughsReceived: 0,
-      isEliminated:   false,
-      isReady:        true,
-      isBot:          true,
     });
 
     socket.join(room.roomCode);
@@ -98,12 +83,12 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
     if (room.status !== 'lobby') return cb({ ok: false, error: 'Game already started' });
 
     if (payload.gameMode)     room.gameMode     = payload.gameMode;
-    if (payload.livesCount)   room.livesCount   = Math.min(Math.max(payload.livesCount,   1),  4);
     if (payload.turnTimeSecs) room.turnTimeSecs = Math.min(Math.max(payload.turnTimeSecs, 10), 30);
-
-    // Update bot's lives to match new livesCount
-    const bot = room.players.get(BOT_ID);
-    if (bot && payload.livesCount) bot.livesRemaining = room.livesCount;
+    if (payload.livesCount) {
+      room.livesCount = Math.min(Math.max(payload.livesCount, 1), 4);
+      // Everyone in the lobby starts the match with the new life count.
+      for (const p of room.players.values()) p.livesRemaining = room.livesCount;
+    }
 
     io.to(payload.roomCode).emit('room_updated', { room: roomManager.serialize(room) });
     cb({ ok: true });
