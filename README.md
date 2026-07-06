@@ -123,7 +123,7 @@ browser profile) and ready up.
 
 - **Server Supabase vars** — only needed for match history persistence and the
   bits media API. Without them the game runs fine; persistence is skipped.
-- **LiveKit vars** — only needed to see *other players'* cameras. Laugh
+- **LiveKit vars** — only needed to see and *hear* other players. Laugh
   detection is local and works without it.
 
 ## Environment variables

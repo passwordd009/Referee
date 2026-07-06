@@ -32,6 +32,48 @@ interface OwnBit {
   text_content: string | null;
 }
 
+/**
+ * Video bit with sound. Bits start from a socket event, so watchers have
+ * no user gesture and browsers may block unmuted autoplay. Strategy: try
+ * with sound; if blocked, play muted and show a one-tap sound button
+ * (the tap is the gesture that lets us unmute).
+ */
+function BitVideo({ src }: { src: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [soundBlocked, setSoundBlocked] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.muted = false;
+    el.volume = 1;
+    el.play().catch(() => {
+      el.muted = true;
+      setSoundBlocked(true);
+      el.play().catch(() => { /* fully blocked — controls remain */ });
+    });
+  }, [src]);
+
+  function unmute() {
+    const el = ref.current;
+    if (!el) return;
+    el.muted = false;
+    el.volume = 1;
+    void el.play();
+    setSoundBlocked(false);
+  }
+
+  return (
+    <div className="gp-bit-videowrap">
+      {/* Bits are capped at 10s at upload time — loop for the turn */}
+      <video ref={ref} className="gp-bit-image" src={src} loop controls playsInline />
+      {soundBlocked && (
+        <button className="gp-sound-btn" onClick={unmute}>🔊 Tap for sound</button>
+      )}
+    </div>
+  );
+}
+
 /** The bit currently on stage — text card, image, or YouTube embed. */
 function BitStage({ bit }: { bit: ActiveBit }) {
   if (bit.mediaType === 'image' && bit.mediaUrl) {
@@ -46,15 +88,7 @@ function BitStage({ bit }: { bit: ActiveBit }) {
     return (
       <div className="gp-bit-card gp-bit-card--media">
         {bit.title && <p className="gp-bit-title">{bit.title}</p>}
-        {/* Bits are capped at 10s at upload time — loop it for the turn */}
-        <video
-          className="gp-bit-image"
-          src={bit.mediaUrl}
-          autoPlay
-          loop
-          controls
-          playsInline
-        />
+        <BitVideo src={bit.mediaUrl} />
       </div>
     );
   }
@@ -106,6 +140,20 @@ function RemoteVideo({ track }: { track: RemoteTrack | null }) {
   }, [track]);
 
   return <video ref={videoRef} autoPlay playsInline muted className="gp-tile__video" />;
+}
+
+/** Plays a remote player's voice. Invisible — audio only. */
+function AudioSink({ track }: { track: RemoteTrack | null }) {
+  const ref = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !track) return;
+    track.attach(el);
+    return () => { track.detach(el); };
+  }, [track]);
+
+  return <audio ref={ref} autoPlay />;
 }
 
 /** Your own camera feed (the same stream the laugh detector watches). */
@@ -471,11 +519,12 @@ export function GamePage() {
     playBit, skipTurn, submitVote, requestRematch,
   } = useGameSocket(roomCode, userId);
 
-  // Player-to-player video (silently disabled when LiveKit isn't configured).
-  const { remoteParticipants } = useLiveKit({
+  // Player-to-player video + voice (silently disabled without LiveKit).
+  const { remoteParticipants, audioBlocked, enableAudio } = useLiveKit({
     roomCode, userId, username,
     serverUrl:  SERVER_URL,
     livekitUrl: LIVEKIT_URL,
+    publishAudio: true,
   });
 
   // Local AI detection: laughs in every mode; in Water Hold an open
@@ -541,6 +590,18 @@ export function GamePage() {
     <div className="gp-page">
       {/* Whistle moment — sound + banner when anyone loses a life */}
       {penalty && <WhistleBanner penalty={penalty} players={players} />}
+
+      {/* Remote players' voices (audio-only sinks) */}
+      {remoteParticipants.map(rp => (
+        <AudioSink key={rp.identity} track={rp.audioTrack} />
+      ))}
+
+      {/* Browser blocked remote audio until a tap — offer the tap */}
+      {audioBlocked && (
+        <button className="gp-audio-banner" onClick={enableAudio}>
+          🔊 Tap to hear the other players
+        </button>
+      )}
 
       {/* In-game menu: audio, report, leave */}
       <button className="gp-menu-btn" onClick={() => setMenuOpen(true)} title="Menu">☰</button>
