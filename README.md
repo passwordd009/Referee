@@ -143,3 +143,50 @@ Server (`server/.env`):
 | `PORT` / `WEB_URL` | no | Defaults: 3001 / http://localhost:5173 |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | no | Match history + bits API |
 | `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | no | Video room tokens |
+
+## Deploy to Render
+
+The app runs as two Render services: a **Static Site** (the web client) and a
+**Web Service** (the game server). A blueprint (`render.yaml`) sets up both.
+
+### With the blueprint (recommended)
+
+1. Push this repo to GitHub.
+2. In Render: **New → Blueprint**, pick the repo. It reads `render.yaml` and
+   creates `laugh-table-server` (Node web service) and `laugh-table-web`
+   (static site).
+3. Set environment variables on each service (see the tables above). Because
+   the `VITE_*` vars are baked in at **build time**, there's a one-time
+   chicken-and-egg step:
+   - Let both services deploy once to get their `*.onrender.com` URLs.
+   - On **laugh-table-web**, set `VITE_SERVER_URL` to the server's URL
+     (e.g. `https://laugh-table-server.onrender.com`).
+   - On **laugh-table-server**, set `WEB_URL` to the static site's URL
+     (e.g. `https://laugh-table-web.onrender.com`) — this is the CORS origin.
+   - Redeploy both (Manual Deploy → Clear build cache & deploy for the web
+     site so the new `VITE_SERVER_URL` bakes in).
+4. Run the Supabase migrations (`supabase/migrations/001`–`004`, in order) in
+   the Supabase SQL editor, and add your static site URL under Supabase
+   **Authentication → URL Configuration** (Site URL + redirect URLs).
+
+### Manual (no blueprint)
+
+- **Static Site**: root dir `.`, build command
+  `npm install && npm run build --workspace=web`, publish directory
+  `web/dist`, and add a rewrite rule `/*` → `/index.html` (Redirects/Rewrites
+  tab) so deep links work. Add the `VITE_*` env vars.
+- **Web Service**: root dir `.`, build command
+  `npm install && npm run build --workspace=server`, start command
+  `npm run start --workspace=server`, health check path `/health`. Add the
+  server env vars including `WEB_URL`.
+
+### Notes
+
+- **Free tier sleeps.** A free web service spins down after ~15 min idle, so
+  the first player to join a cold server waits ~30s. The static site is always
+  on. Upgrade the server to a paid instance to avoid the cold start.
+- **HTTPS is required for webcams** — Render serves both services over HTTPS,
+  so laugh detection and video work out of the box.
+- **LiveKit is optional.** Without `VITE_LIVEKIT_URL` (web) and the LiveKit
+  server keys, players just don't see each other's cameras; laugh detection
+  still runs locally.

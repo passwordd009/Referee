@@ -1,0 +1,47 @@
+# Render Blueprint for Laugh Table.
+# In Render: New → Blueprint → pick this repo. Creates both services.
+# After first deploy, set VITE_SERVER_URL (web) and WEB_URL (server) to the
+# generated .onrender.com URLs, then redeploy — VITE_* vars bake in at build.
+services:
+  # ── Game server (Socket.IO + REST API) ──────────────────
+  - type: web
+    name: laugh-table-server
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build --workspace=server
+    startCommand: npm run start --workspace=server
+    healthCheckPath: /health
+    envVars:
+      - key: WEB_URL           # your static site URL (for CORS)
+        sync: false
+      - key: SUPABASE_URL      # optional — match history + bits API
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: LIVEKIT_API_KEY   # optional — player video tokens
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+
+  # ── Web client (Vite static SPA) ────────────────────────
+  - type: web
+    name: laugh-table-web
+    runtime: static
+    buildCommand: npm install && npm run build --workspace=web
+    staticPublishPath: web/dist
+    routes:
+      # SPA fallback so refreshing /lobby/ABCD etc. serves index.html
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_SERVER_URL   # the game server's .onrender.com URL
+        sync: false
+      - key: VITE_LIVEKIT_URL  # optional
+        sync: false
+      - key: VITE_MIN_AGE      # optional (default 13)
+        sync: false
