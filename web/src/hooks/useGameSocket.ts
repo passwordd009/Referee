@@ -39,6 +39,16 @@ export interface ActiveBit {
   title?: string;
 }
 
+/** XP/tickets a player earned when the match finished. */
+export interface MatchReward {
+  userId: string;
+  xpGained: number;
+  ticketsGained: number;
+  level: number;
+  xp: number;
+  leveledUp: boolean;
+}
+
 type Phase = 'loading' | 'turn_active' | 'turn_reveal' | 'finished';
 
 interface State {
@@ -50,6 +60,8 @@ interface State {
   timeLeft: number;
   turnDurationMs: number;
   result: { winnerId: string | null; stats: Record<string, unknown> } | null;
+  /** Per-player rewards, arrives shortly after match_finished. */
+  rewards: MatchReward[] | null;
   /** Most recent life loss — drives the whistle + banner. Auto-clears. */
   penalty: Penalty | null;
 }
@@ -64,6 +76,7 @@ type Action =
   | { type: 'PLAYER_ELIMINATED'; playerId: string }
   | { type: 'CLEAR_PENALTY'; key: number }
   | { type: 'MATCH_FINISHED'; winnerId: string | null; stats: Record<string, unknown> }
+  | { type: 'MATCH_REWARDS'; rewards: MatchReward[] }
   | { type: 'TICK' };
 
 let penaltyCounter = 0;
@@ -122,6 +135,9 @@ function reducer(state: State, action: Action): State {
     case 'MATCH_FINISHED':
       return { ...state, phase: 'finished', result: { winnerId: action.winnerId, stats: action.stats } };
 
+    case 'MATCH_REWARDS':
+      return { ...state, rewards: action.rewards };
+
     case 'TICK':
       return { ...state, timeLeft: Math.max(0, state.timeLeft - 1) };
 
@@ -139,6 +155,7 @@ const initial: State = {
   timeLeft: 0,
   turnDurationMs: 20_000,
   result: null,
+  rewards: null,
   penalty: null,
 };
 
@@ -200,6 +217,10 @@ export function useGameSocket(roomCode: string, userId: string) {
       dispatch({ type: 'MATCH_FINISHED', winnerId, stats });
     });
 
+    socket.on('match_rewards', ({ rewards }: { rewards: MatchReward[] }) => {
+      dispatch({ type: 'MATCH_REWARDS', rewards });
+    });
+
     return () => {
       stopTick();
       socket.off('anonymous_turn_started');
@@ -209,6 +230,7 @@ export function useGameSocket(roomCode: string, userId: string) {
       socket.off('life_removed');
       socket.off('player_eliminated');
       socket.off('match_finished');
+      socket.off('match_rewards');
       socket.disconnect();
     };
   }, [roomCode]);

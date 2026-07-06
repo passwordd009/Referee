@@ -74,10 +74,15 @@ Key modules:
 
 ## Progression & security foundation
 
-Run `supabase/migrations/003_progression_and_security.sql` to get:
+Run `supabase/migrations/003_progression_and_security.sql` **and
+`004_fix_match_stats.sql`** to get:
 
-- **XP & level** on profiles (level = `floor(sqrt(xp/100)) + 1`). Awarded by
-  future public/ranked matches via `addXP()` — nothing awards XP yet.
+- **XP & level** on profiles (level = `floor(sqrt(xp/100)) + 1`). Every
+  finished match awards rewards to human players: the winner gets
+  **50 XP + 10 tickets**, everyone else **15 XP + 3 tickets** (constants in
+  `server/src/lib/matchPersistence.ts`). The results screen shows what you
+  earned and celebrates level-ups. Match stats and rewards require the
+  server's Supabase env vars.
 - **Tickets** (earnable currency, future cosmetics) and **crowns** (premium
   currency, schema only — no payments). All balance changes go through
   atomic SQL functions that can never produce a negative balance, callable

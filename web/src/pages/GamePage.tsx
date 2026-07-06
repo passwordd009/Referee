@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { RemoteTrack } from 'livekit-client';
 import { useAuth } from '../auth/AuthContext';
-import { useGameSocket, type Penalty, type GamePlayer, type ActiveBit } from '../hooks/useGameSocket';
+import { useGameSocket, type Penalty, type GamePlayer, type ActiveBit, type MatchReward } from '../hooks/useGameSocket';
 import { useLiveKit } from '../hooks/useLiveKit';
 import { useLocalCamera } from '../hooks/useLocalCamera';
 import { socket } from '../lib/socket';
@@ -317,9 +317,10 @@ interface SummaryPlayer {
  * End-of-match carousel: result → match summary → global leaderboard.
  * Swipe through with the arrows or the dots.
  */
-function MatchEndCarousel({ players, result, selfId, onHome }: {
+function MatchEndCarousel({ players, result, rewards, selfId, onHome }: {
   players: GamePlayer[];
   result: { winnerId: string | null; stats: Record<string, unknown> };
+  rewards: MatchReward[] | null;
   selfId: string;
   onHome: () => void;
 }) {
@@ -327,6 +328,7 @@ function MatchEndCarousel({ players, result, selfId, onHome }: {
 
   const winner = players.find(p => p.userId === result.winnerId);
   const iWon = result.winnerId === selfId;
+  const myReward = rewards?.find(r => r.userId === selfId) ?? null;
   const nameOf = (id: string | null | undefined) =>
     players.find(p => p.userId === id)?.username ?? '—';
 
@@ -343,6 +345,16 @@ function MatchEndCarousel({ players, result, selfId, onHome }: {
             {iWon ? 'YOU WIN' : 'GAME OVER'}
           </div>
           <p className="gp-over-sub">{winner ? `${winner.username} survived` : 'No survivors'}</p>
+
+          {myReward && (
+            <div className="gp-reward">
+              <span className="gp-reward__gain">+{myReward.xpGained} XP</span>
+              <span className="gp-reward__gain">+{myReward.ticketsGained} 🎟</span>
+              {myReward.leveledUp && (
+                <span className="gp-reward__levelup">LEVEL UP → LVL {myReward.level}</span>
+              )}
+            </div>
+          )}
           <div className="gp-over-stats">
             {(result.stats.funniest as string | null) && (
               <div className="stat">
@@ -435,7 +447,7 @@ export function GamePage() {
 
   const {
     phase, players, myTurn, activeBit, revealedPlayer,
-    timeLeft, turnDurationMs, result, penalty, playBit, skipTurn,
+    timeLeft, turnDurationMs, result, rewards, penalty, playBit, skipTurn,
   } = useGameSocket(roomCode, userId);
 
   // Player-to-player video (silently disabled when LiveKit isn't configured).
@@ -487,6 +499,7 @@ export function GamePage() {
         <MatchEndCarousel
           players={players}
           result={result}
+          rewards={rewards}
           selfId={userId}
           onHome={() => navigate('/')}
         />

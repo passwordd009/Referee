@@ -278,7 +278,15 @@ export class MatchEngine {
       },
     });
 
-    saveMatch(room, winnerId).catch(err => console.error('[persist]', err));
+    // Persist stats and award XP/tickets, then tell the room what
+    // everyone earned (client shows it on the results screen).
+    saveMatch(room, winnerId)
+      .then(rewards => {
+        if (rewards.length > 0) {
+          this.io.to(roomCode).emit('match_rewards', { rewards });
+        }
+      })
+      .catch(err => console.error('[persist]', err));
   }
 
   private getSocketId(roomCode: string, userId: string): string | undefined {
