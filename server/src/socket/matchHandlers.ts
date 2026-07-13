@@ -8,7 +8,15 @@ export function registerMatchHandlers(io: Server, socket: Socket, engine: MatchE
   socket.on('get_match_state', (payload: { roomCode: string }, cb: (res: object) => void) => {
     const room = roomManager.get(payload.roomCode);
     if (!room) return cb({ ok: false, error: 'Room not found' });
-    cb({ ok: true, room: roomManager.serialize(room) });
+    // Include the caller's private role — the game page may mount after
+    // role_revealed_to_player was emitted.
+    const me = Array.from(room.players.values()).find(p => p.socketId === socket.id);
+    cb({
+      ok: true,
+      room: roomManager.serialize(room),
+      myRole: me?.role ?? null,
+      discussionsRemaining: me?.discussionsRemaining ?? 0,
+    });
   });
 
   socket.on('start_match', (payload: { roomCode: string; userId: string }, cb: (res: object) => void) => {
@@ -24,7 +32,43 @@ export function registerMatchHandlers(io: Server, socket: Socket, engine: MatchE
     cb({ ok: true });
   });
 
-  // Active player plays a bit from their inventory
+  socket.on('rematch', (payload: { roomCode: string; userId: string }, cb?: (res: object) => void) => {
+    const room = roomManager.get(payload.roomCode);
+    if (!room) return cb?.({ ok: false, error: 'Room not found' });
+    if (room.createdBy !== payload.userId) return cb?.({ ok: false, error: 'Only the host can rematch' });
+    engine.rematch(payload.roomCode);
+    cb?.({ ok: true });
+  });
+
+  // ── Rounds ──────────────────────────────────────────────
+
+  // Jester picks the next round type
+  socket.on('select_round', (payload: { roomCode: string; userId: string; type: string }) => {
+    engine.selectRound(payload.roomCode, payload.userId, payload.type);
+  });
+
+  // Guess-the-item: private guess submission
+  socket.on('submit_item_guess', (payload: { roomCode: string; userId: string; guess: string }) => {
+    if (typeof payload.guess !== 'string') return;
+    engine.submitItemGuess(payload.roomCode, payload.userId, payload.guess);
+  });
+
+  // Detective: accusation-round guess
+  socket.on('detective_guess', (payload: { roomCode: string; userId: string; targetId: string }) => {
+    engine.detectiveGuess(payload.roomCode, payload.userId, payload.targetId);
+  });
+
+  // Detective: activate a discussion (max 3 per match)
+  socket.on('activate_discussion', (payload: { roomCode: string; userId: string }) => {
+    engine.activateDiscussion(payload.roomCode, payload.userId);
+  });
+
+  // Soundboard: Saboteur any time (cooldown), everyone in Sudden Death
+  socket.on('play_soundboard', (payload: { roomCode: string; userId: string; soundId: string }) => {
+    engine.playSound(payload.roomCode, payload.userId, payload.soundId);
+  });
+
+  // Performer plays a bit (free-for-all during Sudden Death)
   socket.on('play_bit', (payload: {
     roomCode: string;
     userId: string;
@@ -41,19 +85,13 @@ export function registerMatchHandlers(io: Server, socket: Socket, engine: MatchE
     });
   });
 
-  // Player guesses who played the bit
-  socket.on('submit_guess', (payload: {
-    roomCode: string;
-    guesserId: string;
-    targetId: string;
-  }) => {
-    engine.submitGuess(payload.roomCode, payload.guesserId, payload.targetId);
+  // Performer ends their round early
+  socket.on('skip_turn', (payload: { roomCode: string; userId: string }) => {
+    engine.endRoundEarly(payload.roomCode, payload.userId);
   });
 
-  // Active player skips their turn
-  socket.on('skip_turn', (payload: { roomCode: string; userId: string }) => {
-    const room = roomManager.get(payload.roomCode);
-    if (!room || room.status !== 'in_game') return;
-    engine.endTurn(payload.roomCode);
+  // Voluntary forfeit mid-match
+  socket.on('leave_match', (payload: { roomCode: string; userId: string }) => {
+    engine.leaveMatch(payload.roomCode, payload.userId);
   });
 }

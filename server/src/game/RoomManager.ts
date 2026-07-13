@@ -2,7 +2,8 @@ import { randomBytes } from 'crypto';
 
 export type RoomType = 'private' | 'public' | 'ranked';
 export type RoomStatus = 'lobby' | 'in_game' | 'finished';
-export type GameMode = 'water_hold' | 'guess_the_biter' | 'casual';
+export type CameraLayout = 'grid' | 'spotlight';
+export type Role = 'jester' | 'saboteur' | 'detective' | 'regular';
 
 export interface Player {
   userId: string;
@@ -14,7 +15,8 @@ export interface Player {
   laughsReceived: number;
   isEliminated: boolean;
   isReady: boolean;
-  isBot?: boolean;
+  role: Role;
+  discussionsRemaining: number;
 }
 
 export interface Room {
@@ -23,13 +25,20 @@ export interface Room {
   roomType: RoomType;
   maxPlayers: number;
   livesCount: number;
-  gameMode: GameMode;
-  turnTimeSecs: number;
+  showCameras: boolean;
+  cameraLayout: CameraLayout;
   status: RoomStatus;
   createdBy: string;
   players: Map<string, Player>;
   currentTurnIndex: number;
   turnOrder: string[];
+  // Classic-mode match state
+  currentRoundType: string | null;
+  currentRoundIndex: number;
+  suddenDeathActive: boolean;
+  jesterPlayerId: string | null;
+  detectivePlayerId: string | null;
+  saboteurPlayerId: string | null;
 }
 
 class RoomManager {
@@ -45,8 +54,6 @@ class RoomManager {
     roomType: RoomType;
     maxPlayers: number;
     livesCount: number;
-    gameMode: GameMode;
-    turnTimeSecs: number;
     createdBy: string;
   }): Room {
     const roomCode = this.generateCode();
@@ -57,6 +64,14 @@ class RoomManager {
       players: new Map(),
       currentTurnIndex: 0,
       turnOrder: [],
+      showCameras: true,
+      cameraLayout: 'grid',
+      currentRoundType: null,
+      currentRoundIndex: 0,
+      suddenDeathActive: false,
+      jesterPlayerId: null,
+      detectivePlayerId: null,
+      saboteurPlayerId: null,
       ...opts,
     };
     this.rooms.set(roomCode, room);
@@ -78,10 +93,8 @@ class RoomManager {
     this.pendingDeletes.delete(roomCode);
   }
 
-  hasHumanPlayers(roomCode: string): boolean {
-    const room = this.rooms.get(roomCode);
-    if (!room) return false;
-    return Array.from(room.players.values()).some(p => !p.isBot);
+  isEmpty(roomCode: string): boolean {
+    return (this.rooms.get(roomCode)?.players.size ?? 0) === 0;
   }
 
   removeSocketMapping(socketId: string): void {
@@ -111,6 +124,7 @@ class RoomManager {
     room.players.set(player.userId, player);
     room.turnOrder.push(player.userId);
     this.socketToRoom.set(player.socketId, roomCode);
+    this.cancelDelete(roomCode);
   }
 
   removeBySocket(socketId: string): { roomCode: string; userId: string; room: Room } | null {
@@ -129,8 +143,7 @@ class RoomManager {
     room.turnOrder = room.turnOrder.filter(id => id !== userId);
     this.socketToRoom.delete(socketId);
 
-    const hasHumans = Array.from(room.players.values()).some(p => !p.isBot);
-    if (!hasHumans) this.rooms.delete(roomCode);
+    if (room.players.size === 0) this.rooms.delete(roomCode);
 
     return { roomCode, userId, room };
   }
@@ -147,12 +160,19 @@ class RoomManager {
       roomType: room.roomType,
       maxPlayers: room.maxPlayers,
       livesCount: room.livesCount,
-      gameMode: room.gameMode,
-      turnTimeSecs: room.turnTimeSecs,
+      showCameras: room.showCameras,
+      cameraLayout: room.cameraLayout,
       status: room.status,
       createdBy: room.createdBy,
+      // Public role info only — the Saboteur stays secret.
+      jesterPlayerId: room.jesterPlayerId,
+      detectivePlayerId: room.detectivePlayerId,
+      currentRoundType: room.currentRoundType,
+      currentRoundIndex: room.currentRoundIndex,
+      suddenDeathActive: room.suddenDeathActive,
+      // role is stripped: each player learns their own role privately.
       players: Array.from(room.players.values()).map(
-        ({ socketId: _s, ...rest }) => rest
+        ({ socketId: _s, role: _r, ...rest }) => rest
       ),
       currentTurnUserId: room.turnOrder[room.currentTurnIndex] ?? null,
     };

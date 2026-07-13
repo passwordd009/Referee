@@ -5,6 +5,12 @@ const router = Router();
 const BUCKET = 'bits';
 const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 
+// Without Supabase creds the whole bits API is politely unavailable.
+router.use((_req, res, next) => {
+  if (!supabase) return res.status(503).json({ error: 'Bits API disabled — Supabase not configured' });
+  next();
+});
+
 // POST /api/bits/upload-url — get a signed upload URL from Supabase Storage
 router.post('/upload-url', async (req, res) => {
   const { userId, filename, contentType } = req.body as {
@@ -17,7 +23,7 @@ router.post('/upload-url', async (req, res) => {
   }
 
   const path = `${userId}/${Date.now()}-${filename}`;
-  const { data, error } = await supabase.storage
+  const { data, error } = await supabase!.storage
     .from(BUCKET)
     .createSignedUploadUrl(path);
 
@@ -40,9 +46,9 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'creatorId, mediaType, path required' });
   }
 
-  const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  const { data: urlData } = supabase!.storage.from(BUCKET).getPublicUrl(path);
 
-  const { data, error } = await supabase
+  const { data, error } = await supabase!
     .from('bits')
     .insert({
       creator_id: creatorId,
@@ -61,7 +67,7 @@ router.get('/', async (req, res) => {
   const { userId } = req.query;
   if (!userId) return res.status(400).json({ error: 'userId required' });
 
-  const { data, error } = await supabase
+  const { data, error } = await supabase!
     .from('bits')
     .select('*')
     .eq('creator_id', userId)

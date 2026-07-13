@@ -8,6 +8,8 @@ import bitRoutes from './routes/bits.js';
 import { registerRoomHandlers } from './socket/roomHandlers.js';
 import { registerMatchHandlers } from './socket/matchHandlers.js';
 import { registerLaughHandlers } from './socket/laughHandlers.js';
+import { registerChatHandlers } from './socket/chatHandlers.js';
+import { registerQueueHandlers } from './socket/queueHandlers.js';
 import { matchEngine } from './game/MatchEngine.js';
 
 const app = express();
@@ -32,6 +34,8 @@ io.on('connection', (socket) => {
   registerRoomHandlers(io, socket);
   registerMatchHandlers(io, socket, matchEngine);
   registerLaughHandlers(io, socket, matchEngine);
+  registerChatHandlers(io, socket);
+  registerQueueHandlers(io, socket);
 
   socket.on('disconnect', () => {
     console.log(`[socket] - ${socket.id}`);

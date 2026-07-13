@@ -2,6 +2,7 @@ import { supabase } from './supabase.js';
 import type { Room } from '../game/RoomManager.js';
 
 export async function saveMatch(room: Room, winnerId: string | null): Promise<void> {
+  if (!supabase) return; // persistence disabled without Supabase creds
   const players = Array.from(room.players.values());
 
   const { data: match, error: matchErr } = await supabase

@@ -9,10 +9,9 @@ export interface LobbyPlayer {
   isReady: boolean;
   livesRemaining: number;
   isEliminated: boolean;
-  isBot?: boolean;
 }
 
-export type GameMode = 'water_hold' | 'guess_the_biter' | 'casual';
+export type CameraLayout = 'grid' | 'spotlight';
 
 export interface LobbyRoom {
   id: string;
@@ -20,8 +19,8 @@ export interface LobbyRoom {
   roomType: string;
   maxPlayers: number;
   livesCount: number;
-  gameMode: GameMode;
-  turnTimeSecs: number;
+  showCameras: boolean;
+  cameraLayout: CameraLayout;
   status: 'lobby' | 'in_game' | 'finished';
   createdBy: string;
   players: LobbyPlayer[];
@@ -96,7 +95,7 @@ export function useLobby(
   }, [roomCode, user.id]);
 
   const updateSettings = useCallback((
-    settings: { gameMode?: GameMode; livesCount?: number; turnTimeSecs?: number },
+    settings: { livesCount?: number; showCameras?: boolean; cameraLayout?: CameraLayout },
     cb?: (err?: string) => void,
   ) => {
     socket.emit('update_room_settings', { roomCode, userId: user.id, ...settings },
