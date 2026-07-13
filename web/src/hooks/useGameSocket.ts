@@ -9,6 +9,7 @@ export interface GamePlayer {
   username: string;
   livesRemaining: number;
   isEliminated: boolean;
+  isSpectator: boolean;
 }
 
 export type RoundType = 'match_the_sound' | 'guess_the_item' | 'fill_blank' | 'accusation';

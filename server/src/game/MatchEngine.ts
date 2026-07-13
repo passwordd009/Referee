@@ -85,7 +85,9 @@ export class MatchEngine {
     room.currentRoundIndex = 0;
     room.currentRoundType = null;
     room.suddenDeathActive = false;
-    room.turnOrder = Array.from(room.players.keys());
+    room.turnOrder = Array.from(room.players.values())
+      .filter(p => !p.isSpectator)
+      .map(p => p.userId);
     this.laughProcs.set(roomCode, new LaughProcessor());
     this.soundCooldowns.set(roomCode, new Map());
     this.jesterOnTheHook.delete(roomCode);
@@ -121,7 +123,7 @@ export class MatchEngine {
   }
 
   private assignRoles(room: Room): void {
-    const ids = shuffle(Array.from(room.players.keys()));
+    const ids = shuffle(room.turnOrder);
     room.jesterPlayerId    = ids[0] ?? null;
     room.saboteurPlayerId  = ids[1] ?? null;                 // 2+ players
     room.detectivePlayerId = ids.length >= 3 ? ids[2] : null; // 3+ players
@@ -333,7 +335,7 @@ export class MatchEngine {
     if (!room || room.status !== 'in_game') return;
     if (room.currentRoundType !== 'guess_the_item' || !this.roundActive.has(roomCode)) return;
     const player = room.players.get(userId);
-    if (!player || player.isEliminated) return;
+    if (!player || player.isEliminated || player.isSpectator) return;
 
     const guesses = this.itemGuesses.get(roomCode);
     if (!guesses || guesses.has(userId)) return;
@@ -491,7 +493,7 @@ export class MatchEngine {
     const room = roomManager.get(roomCode);
     if (!room || room.status !== 'in_game') return;
     const player = room.players.get(userId);
-    if (!player || player.isEliminated) return;
+    if (!player || player.isEliminated || player.isSpectator) return;
 
     const allowed = room.suddenDeathActive || player.role === 'saboteur';
     if (!allowed) return;
@@ -521,7 +523,7 @@ export class MatchEngine {
     // Normal rounds: only the performer. Sudden Death: free-for-all.
     if (!room.suddenDeathActive && this.performers.get(roomCode) !== userId) return;
     const player = room.players.get(userId);
-    if (!player || player.isEliminated) return;
+    if (!player || player.isEliminated || player.isSpectator) return;
 
     this.io.to(roomCode).emit('bit_played', {
       mediaType:   bit.mediaType,
@@ -558,7 +560,7 @@ export class MatchEngine {
     if (!room || room.status !== 'in_game') return;
 
     const player = room.players.get(laughingPlayerId);
-    if (!player || player.isEliminated) return;
+    if (!player || player.isEliminated || player.isSpectator) return;
 
     const performerId = this.performers.get(roomCode);
     // Performer immunity — except in Sudden Death, where nobody is safe.
@@ -610,7 +612,7 @@ export class MatchEngine {
     const room = roomManager.get(roomCode);
     if (!room || room.status !== 'in_game') return;
     const player = room.players.get(userId);
-    if (!player || player.isEliminated) return;
+    if (!player || player.isEliminated || player.isSpectator) return;
 
     player.isEliminated = true;
     player.livesRemaining = 0;
@@ -651,7 +653,7 @@ export class MatchEngine {
     room.suddenDeathActive = false;
     room.currentRoundType = null;
 
-    const players = Array.from(room.players.values());
+    const players = Array.from(room.players.values()).filter(p => !p.isSpectator);
     const alive = this.alivePlayers(roomCode);
     // Normal end: last one standing. Sudden-death cap: most lives wins.
     const winnerId = alive.length === 1

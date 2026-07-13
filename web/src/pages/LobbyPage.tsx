@@ -5,10 +5,11 @@ import { useAuth } from '../auth/AuthContext';
 import { useLobby } from '../hooks/useLobby';
 import { useChat } from '../hooks/useChat';
 import { useLiveKit } from '../hooks/useLiveKit';
-import { PlayerAvatar } from '../components/lobby/PlayerAvatar';
+import { useLocalCamera } from '../hooks/useLocalCamera';
 import { BitsInventory } from '../components/lobby/BitsInventory';
 import { ChatPanel } from '../components/ChatPanel';
 import { AudioSink } from '../components/AudioSink';
+import { LocalVideo, RemoteVideo, AiStatus } from '../components/VideoTiles';
 
 const SERVER_URL  = (import.meta.env.VITE_SERVER_URL  as string | undefined) ?? 'http://localhost:3001';
 const LIVEKIT_URL = (import.meta.env.VITE_LIVEKIT_URL as string | undefined) ?? '';
@@ -24,24 +25,30 @@ export function LobbyPage() {
   const userId   = user!.id;
   const roomCode = code.toUpperCase();
 
-  const { room, error, connecting, setReady, updateSettings, startMatch } = useLobby(
+  const { room, error, connecting, setReady, updateSettings, setSpectator, startMatch } = useLobby(
     roomCode,
     { id: userId, username },
   );
 
   const chat = useChat(roomCode, userId);
 
-  // Voice chat starts in the lobby — mic on, no camera yet.
+  // Camera + mic are live in the lobby: you can see and hear everyone
+  // before the match starts.
   const { remoteParticipants, audioBlocked, enableAudio, micMuted, toggleMic } = useLiveKit({
     roomCode, userId, username,
     serverUrl:  SERVER_URL,
     livekitUrl: LIVEKIT_URL,
-    publishVideo: false,
   });
 
-  const selfPlayer = room?.players.find(p => p.userId === userId);
-  const isHost     = room?.createdBy === userId;
-  const allReady   = room ? room.players.length >= 2 && room.players.every(p => p.isReady) : false;
+  // Local preview + laugh-detector preflight (no penalties in lobby —
+  // the meter just proves detection works before you play).
+  const { stream: localStream, error: camError, aiReady, faceOk, smileScore } = useLocalCamera();
+
+  const selfPlayer  = room?.players.find(p => p.userId === userId);
+  const isHost      = room?.createdBy === userId;
+  const activePlayers = room?.players.filter(p => !p.isSpectator) ?? [];
+  const spectators    = room?.players.filter(p => p.isSpectator) ?? [];
+  const allReady    = activePlayers.length >= 2 && activePlayers.every(p => p.isReady);
 
   function copyCode() {
     navigator.clipboard.writeText(roomCode);
@@ -69,6 +76,37 @@ export function LobbyPage() {
           <p className="auth-error" style={{ fontSize: 16 }}>{error}</p>
           <button className="btn btn-secondary" onClick={() => navigate('/')}>Back</button>
         </div>
+      </div>
+    );
+  }
+
+  function renderTile(p: NonNullable<typeof room>['players'][number]) {
+    const isSelf   = p.userId === userId;
+    const remotePt = remoteParticipants.find(r => r.identity.endsWith(`__${p.userId}`));
+    return (
+      <div key={p.userId} className={`gp-tile lobby-tile ${isSelf ? 'gp-tile--self' : ''}`}>
+        <div className="gp-tile__screen">
+          {isSelf
+            ? <LocalVideo stream={localStream} />
+            : <RemoteVideo track={remotePt?.videoTrack ?? null} />}
+          {!isSelf && !remotePt?.videoTrack && (
+            <div className="gp-tile__nocam"><span className="gp-tile__nocam-face">📷</span></div>
+          )}
+        </div>
+        <div className="gp-tile__label">
+          <span className="gp-tile__name">
+            {p.userId === room?.createdBy && '👑 '}
+            {p.username}{isSelf ? ' (you)' : ''}
+          </span>
+          {p.isSpectator
+            ? <span className="lobby-tile__spec">👁 SPEC</span>
+            : <span className={`lobby-tile__ready ${p.isReady ? 'lobby-tile__ready--on' : ''}`}>
+                {p.isReady ? '✓ ready' : 'not ready'}
+              </span>}
+        </div>
+        {isSelf && (
+          <AiStatus error={camError} aiReady={aiReady} faceOk={faceOk} smileScore={smileScore} />
+        )}
       </div>
     );
   }
@@ -109,36 +147,47 @@ export function LobbyPage() {
 
       <div className="lobby-body">
         <section className="lobby-left">
-          {/* Players */}
+          {/* Players — live cameras */}
           <div className="lobby-players">
             <h2 className="lobby-section-title">
-              Players <span className="lobby-section-count">{room?.players.length ?? 0} / {room?.maxPlayers ?? 6}</span>
+              Players <span className="lobby-section-count">{activePlayers.length} / {room?.maxPlayers ?? 6}</span>
             </h2>
 
-            <div className="player-grid">
-              {room?.players.map(p => (
-                <PlayerAvatar
-                  key={p.userId}
-                  player={p}
-                  isHost={p.userId === room.createdBy}
-                  isSelf={p.userId === userId}
-                />
-              ))}
-              {room && Array.from({ length: Math.max(0, room.maxPlayers - room.players.length) }).map((_, i) => (
-                <div key={`empty-${i}`} className="player-avatar player-avatar--empty">
-                  <div className="player-avatar__pic player-avatar__pic--empty">?</div>
-                  <span className="player-avatar__name">Waiting…</span>
-                </div>
-              ))}
+            <div className="lobby-camgrid">
+              {activePlayers.map(renderTile)}
             </div>
 
+            {spectators.length > 0 && (
+              <>
+                <h2 className="lobby-section-title" style={{ marginTop: 16 }}>
+                  Spectators <span className="lobby-section-count">{spectators.length}</span>
+                </h2>
+                <div className="lobby-camgrid lobby-camgrid--spec">
+                  {spectators.map(renderTile)}
+                </div>
+              </>
+            )}
+
             <div className="lobby-actions">
-              <button
-                className={`btn ${selfPlayer?.isReady ? 'btn-secondary' : 'btn-primary'}`}
-                onClick={() => setReady(!selfPlayer?.isReady)}
-              >
-                {selfPlayer?.isReady ? 'Not ready' : 'Ready up'}
-              </button>
+              {selfPlayer?.isSpectator ? (
+                <button className="btn btn-primary" onClick={() => setSpectator(false, e => setStartError(e ?? ''))}>
+                  Switch to player
+                </button>
+              ) : (
+                <>
+                  <button
+                    className={`btn ${selfPlayer?.isReady ? 'btn-secondary' : 'btn-primary'}`}
+                    onClick={() => setReady(!selfPlayer?.isReady)}
+                  >
+                    {selfPlayer?.isReady ? 'Not ready' : 'Ready up'}
+                  </button>
+                  {room?.allowSpectators && (
+                    <button className="btn btn-ghost" onClick={() => setSpectator(true, e => setStartError(e ?? ''))}>
+                      👁 Watch as spectator
+                    </button>
+                  )}
+                </>
+              )}
 
               {isHost && (
                 <button
@@ -153,10 +202,10 @@ export function LobbyPage() {
             </div>
 
             {startError && <p className="auth-error">{startError}</p>}
-            {!allReady && room && room.players.length >= 2 && (
+            {!allReady && activePlayers.length >= 2 && (
               <p className="lobby-hint">Waiting for all players to ready up…</p>
             )}
-            {room && room.players.length < 2 && (
+            {activePlayers.length < 2 && (
               <p className="lobby-hint">Share the room code to invite friends.</p>
             )}
           </div>
@@ -221,10 +270,24 @@ export function LobbyPage() {
                   ))}
                 </div>
               </div>
+
+              <div className="lobby-setting-row">
+                <span className="lobby-setting-row__label">Spectators</span>
+                <div className="lobby-setting-row__control">
+                  <button
+                    className={`lobby-toggle ${room?.allowSpectators ? 'lobby-toggle--on' : ''}`}
+                    onClick={() => isHost && room && updateSettings({ allowSpectators: !room.allowSpectators })}
+                    disabled={!isHost}
+                    title={!isHost ? 'Only the host can change settings' : ''}
+                  >
+                    {room?.allowSpectators ? 'ALLOWED' : 'OFF'}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {!room?.showCameras && (
-              <p className="lobby-hint">Cameras hidden — laugh detection still runs locally on every player.</p>
+              <p className="lobby-hint">Cameras hidden in-game — laugh detection still runs locally on every player.</p>
             )}
             {!isHost && <p className="lobby-hint">Only the host can change settings.</p>}
           </div>

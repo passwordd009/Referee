@@ -4,16 +4,28 @@ import { startVisionLoop } from '../vision/visionLoop';
 import { initFaceLandmarker } from '../vision/faceLandmarker';
 
 const LAUGH_THRESHOLD = 0.5;
+const STATUS_INTERVAL_MS = 250; // UI status updates, not per-frame
 
 interface UseLocalCameraOptions {
   onLaugh?: (confidence: number) => void;
 }
 
+/**
+ * Webcam + local AI laugh detection. Also exposes a live status so the
+ * UI can show that the detector is actually working:
+ *   aiReady    — models loaded and the loop is running
+ *   faceOk     — a face is currently tracked
+ *   smileScore — 0..1 latest smile score (throttled)
+ */
 export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError]   = useState<string | null>(null);
+  const [aiReady, setAiReady] = useState(false);
+  const [faceOk, setFaceOk] = useState(false);
+  const [smileScore, setSmileScore] = useState(0);
   const onLaughRef = useRef(onLaugh);
   onLaughRef.current = onLaugh;
+  const lastStatusRef = useRef(0);
 
   useEffect(() => {
     let activeStream: MediaStream | null = null;
@@ -45,12 +57,20 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
 
       await initFaceLandmarker();
       if (cancelled) return;
+      setAiReady(true);
 
       stopLoop = startVisionLoop({
         videoEl,
         onEvent: (event) => {
           if (event.type === 'VIOLATION_DETECTED') {
             onLaughRef.current?.(event.faceState.smileScore);
+          }
+          // Throttled status for UI indicators
+          const now = Date.now();
+          if (now - lastStatusRef.current >= STATUS_INTERVAL_MS) {
+            lastStatusRef.current = now;
+            setFaceOk(event.faceState.faceDetected);
+            setSmileScore(event.faceState.smileScore);
           }
         },
         smileThreshold: LAUGH_THRESHOLD,
@@ -68,5 +88,5 @@ export function useLocalCamera({ onLaugh }: UseLocalCameraOptions = {}) {
     };
   }, []);
 
-  return { stream, error };
+  return { stream, error, aiReady, faceOk, smileScore };
 }

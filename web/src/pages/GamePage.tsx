@@ -1,7 +1,6 @@
 /// <reference types="vite/client" />
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import type { RemoteTrack } from 'livekit-client';
 import { useAuth } from '../auth/AuthContext';
 import { useGameSocket, type RoundType } from '../hooks/useGameSocket';
 import { useLiveKit } from '../hooks/useLiveKit';
@@ -11,6 +10,7 @@ import { ChatPanel } from '../components/ChatPanel';
 import { AudioSink } from '../components/AudioSink';
 import { socket } from '../lib/socket';
 import { SOUND_IDS, SOUND_LABELS, playSound } from '../lib/soundboard';
+import { LocalVideo, RemoteVideo, AiStatus } from '../components/VideoTiles';
 
 const SERVER_URL  = (import.meta.env.VITE_SERVER_URL  as string | undefined) ?? 'http://localhost:3001';
 const LIVEKIT_URL = (import.meta.env.VITE_LIVEKIT_URL as string | undefined) ?? '';
@@ -47,27 +47,6 @@ function Lives({ count, max }: { count: number; max: number }) {
   );
 }
 
-function RemoteVideo({ track }: { track: RemoteTrack | null }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el || !track) return;
-    track.attach(el);
-    return () => { track.detach(el); };
-  }, [track]);
-  return <video ref={videoRef} autoPlay playsInline muted className="gp-tile__video" />;
-}
-
-function LocalVideo({ stream }: { stream: MediaStream | null }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    el.srcObject = stream;
-  }, [stream]);
-  return <video ref={videoRef} autoPlay playsInline muted className="gp-tile__video" />;
-}
-
 export function GamePage() {
   const { code = '' }    = useParams<{ code: string }>();
   const { user }         = useAuth();
@@ -93,8 +72,13 @@ export function GamePage() {
     livekitUrl: LIVEKIT_URL,
   });
 
-  const { stream: localStream } = useLocalCamera({
+  const selfIsSpectator = players.find(p => p.userId === userId)?.isSpectator ?? false;
+
+  // Laugh detection runs for everyone (spectators can check their camera
+  // too) but only players report laughs — spectators have no lives.
+  const { stream: localStream, error: camError, aiReady, faceOk, smileScore } = useLocalCamera({
     onLaugh: (confidence) => {
+      if (selfIsSpectator) return;
       socket.emit('laugh_detected', { roomCode, userId, confidence });
     },
   });
@@ -107,12 +91,14 @@ export function GamePage() {
   // Reset per-round input state
   useEffect(() => { setItemGuess(''); setGuessSent(false); }, [round?.type, roundIndex]);
 
-  const maxLives = Math.max(...players.map(p => p.livesRemaining), 3);
+  const activePlayers = players.filter(p => !p.isSpectator);
+  const spectators = players.filter(p => p.isSpectator);
+  const maxLives = Math.max(...activePlayers.map(p => p.livesRemaining), 3);
   const timerPct = durationMs > 0 ? timeLeft / (durationMs / 1000) : 0;
   const self     = players.find(p => p.userId === userId);
   const iAmPerformer = round?.performerId === userId;
   const performer = players.find(p => p.userId === round?.performerId);
-  const canUseSoundboard = (myRole === 'saboteur' || suddenDeath) && !self?.isEliminated;
+  const canUseSoundboard = (myRole === 'saboteur' || suddenDeath) && !self?.isEliminated && !selfIsSpectator;
   const soundReady = Date.now() >= soundCooldownUntil;
 
   function fireSound(id: string) {
@@ -205,9 +191,13 @@ export function GamePage() {
 
       {/* Role banner */}
       <div className="gp-topbar">
-        <div className={`gp-role-chip gp-role-chip--${myRole}`}>
-          {ROLE_LABELS[myRole].title}
-        </div>
+        {selfIsSpectator ? (
+          <div className="gp-role-chip">👁 SPECTATING</div>
+        ) : (
+          <div className={`gp-role-chip gp-role-chip--${myRole}`}>
+            {ROLE_LABELS[myRole].title}
+          </div>
+        )}
         {suddenDeath && <div className="gp-sd-banner">💀 SUDDEN DEATH — one laugh and you're out</div>}
         {!suddenDeath && round && (
           <div className="gp-round-chip">Round {roundIndex}: {ROUND_LABELS[round.type]}</div>
@@ -225,7 +215,7 @@ export function GamePage() {
 
       {/* Player tiles */}
       <div className={`gp-tiles ${useSpotlight ? 'gp-tiles--spotlight' : ''}`}>
-        {players.map(p => {
+        {activePlayers.map(p => {
           const isSelf   = p.userId === userId;
           const remotePt = remoteParticipants.find(r => r.identity.endsWith(`__${p.userId}`));
           const isSpot   = p.userId === spotlightId;
@@ -263,10 +253,20 @@ export function GamePage() {
               </div>
               {p.isEliminated && <div className="gp-tile__out">OUT</div>}
               {isSpot && <div className="gp-tile__badge">ON STAGE</div>}
+              {isSelf && !p.isEliminated && (
+                <AiStatus error={camError} aiReady={aiReady} faceOk={faceOk} smileScore={smileScore} />
+              )}
             </div>
           );
         })}
       </div>
+
+      {/* Spectators (watching + voice, no lives) */}
+      {spectators.length > 0 && (
+        <div className="gp-spectators">
+          👁 {spectators.map(sp => sp.username + (sp.userId === userId ? ' (you)' : '')).join(', ')}
+        </div>
+      )}
 
       {/* Main stage */}
       <div className="gp-main">
@@ -342,7 +342,7 @@ export function GamePage() {
               <p className="gp-bit-label">HINT</p>
               <p className="gp-bit-text">{round.hint}</p>
             </div>
-            {!self?.isEliminated && (
+            {!self?.isEliminated && !selfIsSpectator && (
               guessSent ? (
                 <p className="gp-status">✓ Guess locked in. {guessProgress && `${guessProgress.submitted}/${guessProgress.total} submitted`}</p>
               ) : (
@@ -396,7 +396,7 @@ export function GamePage() {
             <p className="gp-status gp-status--sd">
               Make them laugh — soundboard, bits, anything goes. No immunity!
             </p>
-            {!self?.isEliminated && (
+            {!self?.isEliminated && !selfIsSpectator && (
               <div className="gp-choices__list gp-choices__list--sd">
                 {PLAYER_BITS.map((bit, i) => (
                   <button key={i} className="gp-choice" onClick={() => game.playBit(bit)}>

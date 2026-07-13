@@ -7,6 +7,7 @@ export interface LobbyPlayer {
   username: string;
   avatarUrl?: string;
   isReady: boolean;
+  isSpectator: boolean;
   livesRemaining: number;
   isEliminated: boolean;
 }
@@ -19,6 +20,7 @@ export interface LobbyRoom {
   roomType: string;
   maxPlayers: number;
   livesCount: number;
+  allowSpectators: boolean;
   showCameras: boolean;
   cameraLayout: CameraLayout;
   status: 'lobby' | 'in_game' | 'finished';
@@ -95,7 +97,7 @@ export function useLobby(
   }, [roomCode, user.id]);
 
   const updateSettings = useCallback((
-    settings: { livesCount?: number; showCameras?: boolean; cameraLayout?: CameraLayout },
+    settings: { livesCount?: number; showCameras?: boolean; cameraLayout?: CameraLayout; allowSpectators?: boolean },
     cb?: (err?: string) => void,
   ) => {
     socket.emit('update_room_settings', { roomCode, userId: user.id, ...settings },
@@ -105,11 +107,16 @@ export function useLobby(
     );
   }, [roomCode, user.id]);
 
+  const setSpectator = useCallback((spectator: boolean, cb?: (err?: string) => void) => {
+    socket.emit('set_spectator', { roomCode, userId: user.id, spectator },
+      (res: { ok: boolean; error?: string }) => { if (!res.ok) cb?.(res.error); });
+  }, [roomCode, user.id]);
+
   const startMatch = useCallback((cb: (err?: string) => void) => {
     socket.emit('start_match', { roomCode, userId: user.id }, (res: { ok: boolean; error?: string }) => {
       if (!res.ok) cb(res.error);
     });
   }, [roomCode, user.id]);
 
-  return { ...state, setReady, updateSettings, startMatch };
+  return { ...state, setReady, updateSettings, setSpectator, startMatch };
 }

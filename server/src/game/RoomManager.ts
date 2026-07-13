@@ -15,6 +15,7 @@ export interface Player {
   laughsReceived: number;
   isEliminated: boolean;
   isReady: boolean;
+  isSpectator: boolean;
   role: Role;
   discussionsRemaining: number;
 }
@@ -25,6 +26,7 @@ export interface Room {
   roomType: RoomType;
   maxPlayers: number;
   livesCount: number;
+  allowSpectators: boolean;
   showCameras: boolean;
   cameraLayout: CameraLayout;
   status: RoomStatus;
@@ -64,6 +66,7 @@ class RoomManager {
       players: new Map(),
       currentTurnIndex: 0,
       turnOrder: [],
+      allowSpectators: true,
       showCameras: true,
       cameraLayout: 'grid',
       currentRoundType: null,
@@ -122,7 +125,7 @@ class RoomManager {
     const room = this.rooms.get(roomCode);
     if (!room) return;
     room.players.set(player.userId, player);
-    room.turnOrder.push(player.userId);
+    if (!player.isSpectator) room.turnOrder.push(player.userId);
     this.socketToRoom.set(player.socketId, roomCode);
     this.cancelDelete(roomCode);
   }
@@ -160,6 +163,7 @@ class RoomManager {
       roomType: room.roomType,
       maxPlayers: room.maxPlayers,
       livesCount: room.livesCount,
+      allowSpectators: room.allowSpectators,
       showCameras: room.showCameras,
       cameraLayout: room.cameraLayout,
       status: room.status,

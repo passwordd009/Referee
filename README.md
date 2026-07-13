@@ -38,9 +38,15 @@ one laugh = instant elimination.
 
 - **Casual Mode** — matchmaking queue: 3 players match instantly, 2 match
   after a short wait.
-- **Custom Game** — create a room, share the code. Host settings: lives,
-  show/hide cameras, camera layout (grid or spotlight). Cameras hidden
-  still means laugh detection runs — it's all local.
+- **Custom Game** — create a room, share the code. The lobby shows every
+  player's live camera (with a laugh-detector preflight meter on your own
+  tile). Host settings: lives, show/hide cameras, camera layout (grid or
+  spotlight), allow spectators. Cameras hidden still means laugh
+  detection runs — it's all local.
+- **Spectator mode** — when allowed by the host, anyone can "Watch as
+  spectator" from the lobby, and anyone joining mid-match spectates
+  automatically. Spectators see and hear everything and can chat, but
+  have no lives, no role, and their laughs cost nothing.
 - **Chat** — lobby and match have text chat, including referee/system
   messages ("bob joined the room", round announcements, eliminations).
 - **Voice** — microphone is on by default everywhere (lobby, match,
@@ -66,13 +72,23 @@ npm run dev                         # web (5173) + server (3001)
 
 ## Testing
 
-End-to-end socket test of the whole Classic flow (roles, every round type,
-discussion, accusation, sudden death, rematch, casual queue):
+End-to-end socket tests (Classic flow + spectator mode):
 
 ```bash
 npm run dev --workspace=server   # in one terminal
 node server/test/classic-flow.e2e.mjs
+node server/test/spectator-flow.e2e.mjs
 ```
+
+Laugh detector:
+
+- **Manual**: open `/vision-test.html` (dev or production build) — the
+  exact match pipeline with a live smile meter; smile and it should fire.
+- **Unit**: `npx tsx web/test/smileDetector.test.mjs` — scoring math on
+  crafted landmarks (neutral vs grin, thresholds, monotonicity).
+- **Browser**: `node web/test/vision-browser.e2e.mjs` (dev server up) —
+  headless Chromium with a fake webcam proves camera acquisition, model
+  loading, and the vision loop end-to-end.
 
 ## Project layout
 

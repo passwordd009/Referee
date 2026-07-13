@@ -23,9 +23,10 @@ export function registerMatchHandlers(io: Server, socket: Socket, engine: MatchE
     const room = roomManager.get(payload.roomCode);
     if (!room) return cb({ ok: false, error: 'Room not found' });
     if (room.createdBy !== payload.userId) return cb({ ok: false, error: 'Only the host can start' });
-    if (room.players.size < 2) return cb({ ok: false, error: 'Need at least 2 players' });
+    const active = Array.from(room.players.values()).filter(p => !p.isSpectator);
+    if (active.length < 2) return cb({ ok: false, error: 'Need at least 2 players' });
 
-    const notReady = Array.from(room.players.values()).filter(p => !p.isReady);
+    const notReady = active.filter(p => !p.isReady);
     if (notReady.length > 0) return cb({ ok: false, error: 'Not all players are ready' });
 
     engine.startMatch(payload.roomCode);
